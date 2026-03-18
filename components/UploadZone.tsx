@@ -12,6 +12,20 @@ interface UploadZoneProps {
   rowCount: number;
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+type SizeWarning = 'none' | 'large' | 'very-large';
+
+function getSizeWarning(bytes: number): SizeWarning {
+  if (bytes > 300 * 1024 * 1024) return 'very-large'; // >300MB
+  if (bytes > 50 * 1024 * 1024) return 'large'; // >50MB
+  return 'none';
+}
+
 export default function UploadZone({
   label,
   description,
@@ -40,6 +54,8 @@ export default function UploadZone({
     },
     [onFile]
   );
+
+  const sizeWarning = file ? getSizeWarning(file.size) : 'none';
 
   return (
     <div
@@ -78,10 +94,14 @@ export default function UploadZone({
             )}
           </div>
           <div className="text-[var(--tx3)] text-xs mb-3">{description}</div>
-          <div
-            className="font-mono text-[9px] text-[var(--tx3)] tracking-wider uppercase"
-          >
-            .xlsx &middot; .json &middot; up to 500MB
+          <div className="font-mono text-[9px] text-[var(--tx3)] tracking-wider uppercase">
+            .xlsx &middot; .json
+          </div>
+          <div className="font-mono text-[9px] text-[var(--tx3)] tracking-wider uppercase mt-1">
+            Recommended: under 100MB
+          </div>
+          <div className="font-mono text-[9px] text-[var(--tx3)] tracking-wider uppercase">
+            Max: ~300MB (processed in browser)
           </div>
         </>
       ) : (
@@ -90,9 +110,26 @@ export default function UploadZone({
           <div className="font-semibold text-[var(--tx)] text-sm mb-1 truncate">
             {file.name}
           </div>
-          <div className="font-mono text-xs text-[var(--acc)] mb-3">
+          <div className="font-mono text-xs text-[var(--acc)] mb-1">
             {rowCount.toLocaleString()} rows &middot; {columns.length} columns
           </div>
+          <div className="font-mono text-[10px] text-[var(--tx3)] mb-3">
+            {formatSize(file.size)}
+          </div>
+
+          {/* Size warnings */}
+          {sizeWarning === 'very-large' && (
+            <div className="mb-3 px-3 py-1.5 rounded bg-[rgba(176,58,26,0.06)] border border-[rgba(176,58,26,0.2)] text-[10px] text-[var(--nat)] leading-relaxed">
+              This file is very large ({formatSize(file.size)}). Processing may take over a minute and could slow your browser.
+              Consider filtering your data to under 300MB before uploading.
+            </div>
+          )}
+          {sizeWarning === 'large' && (
+            <div className="mb-3 px-3 py-1.5 rounded bg-[rgba(176,125,16,0.06)] border border-[rgba(176,125,16,0.2)] text-[10px] text-[var(--acc)] leading-relaxed">
+              Large file ({formatSize(file.size)}) — processing may take 15-30 seconds. This is normal.
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-1 justify-center">
             {columns.slice(0, 8).map((col) => (
               <span

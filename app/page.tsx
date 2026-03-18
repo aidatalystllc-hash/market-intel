@@ -328,6 +328,11 @@ export default function UploadPage() {
           companies to their locations. Make sure both files share a common domain column (e.g., &quot;palmbeachtan.com&quot;).
           <strong> Latitude and Longitude</strong> are needed to place dots on the map. Without coordinates, companies appear in the table but not on the map.
         </div>
+        <div className="mt-2 p-2.5 bg-[var(--bg3)] border border-[var(--bd)] rounded text-[10px] text-[var(--tx2)] leading-relaxed">
+          <strong className="text-[var(--tx)]">File size limits:</strong> Files under <strong>100MB</strong> process quickly (a few seconds).
+          Files up to <strong>300MB</strong> work but may take 15-60 seconds — processing happens in your browser, so nothing is uploaded to a server.
+          Files above 300MB may crash the browser tab. If your data is very large, try filtering it in Excel first to include only the rows you need.
+        </div>
       </div>
 
       {/* ── HOW IT WORKS ── */}
