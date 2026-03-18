@@ -3,6 +3,9 @@ import { parseFile } from '@/lib/processExcel';
 import { mapColumns } from '@/lib/claudeMapper';
 import { transformCompanies } from '@/lib/dataTransformer';
 
+// Next.js App Router: increase body size limit for large Excel files
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -70,22 +73,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // For very large datasets, strip heavy fields to keep response under sessionStorage limits (~5MB)
+    const stripped = validCompanies.map((c) => ({
+      ...c,
+      // Limit locations array to first 50 per company to save space
+      locations: c.locations.slice(0, 50),
+      // Trim long descriptions
+      description: c.description ? c.description.slice(0, 500) : '',
+    }));
+
     return NextResponse.json({
-      companies: validCompanies,
+      companies: stripped,
       companyMapping,
       locationMapping,
       stats: {
-        totalCompanies: validCompanies.length,
+        totalCompanies: stripped.length,
         withCoordinates: withCoords.length,
-        companyColumns: companyData.columns,
-        locationColumns: locationData?.columns ?? [],
+        companyColumns: companyData.columns.slice(0, 30), // Don't send 960 column names back
+        locationColumns: locationData?.columns.slice(0, 30) ?? [],
       },
       warnings,
     });
   } catch (err) {
     console.error('Process error:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to process files. Please check the file format and try again.' },
+      {
+        error: `Failed to process files: ${message.slice(0, 200)}. Try with a smaller file or check the format.`,
+      },
       { status: 500 }
     );
   }

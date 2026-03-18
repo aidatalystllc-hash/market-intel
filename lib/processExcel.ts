@@ -6,7 +6,8 @@ export interface RawSheet {
 }
 
 /**
- * Parse an Excel (.xlsx) or JSON file buffer into column names and row data.
+ * Parse an Excel (.xlsx/.xls) or JSON file buffer into column names and row data.
+ * For very large files, uses raw values for better performance.
  */
 export function parseFile(buffer: Buffer, filename: string): RawSheet {
   const ext = filename.toLowerCase().split('.').pop();
@@ -20,7 +21,7 @@ export function parseFile(buffer: Buffer, filename: string): RawSheet {
     return { columns, rows };
   }
 
-  // Excel file
+  // Excel file (.xlsx or .xls)
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { columns: [], rows: [] };
@@ -28,7 +29,7 @@ export function parseFile(buffer: Buffer, filename: string): RawSheet {
   const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
-    raw: false,
+    raw: true, // Keep raw values (numbers stay numbers) for better performance
   });
 
   if (rows.length === 0) return { columns: [], rows: [] };

@@ -102,8 +102,8 @@ export async function mapColumnsWithClaude(
     return autoMapped;
   }
 
-  // Only send unmapped columns to Claude
-  const unmapped = columnNames.filter((col) => !autoMapped[col]);
+  // Only send unmapped columns to Claude — cap at 60 to avoid huge API calls
+  const unmapped = columnNames.filter((col) => !autoMapped[col]).slice(0, 60);
   if (unmapped.length === 0) return autoMapped;
 
   const client = new Anthropic({ apiKey });

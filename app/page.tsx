@@ -115,16 +115,35 @@ export default function UploadPage() {
         return;
       }
 
-      sessionStorage.setItem(
-        'marketintel_data',
-        JSON.stringify({
-          companies: data.companies,
-          industryName: industryName || 'Market',
-          colorTheme,
-          warnings: data.warnings,
-          showTour: true,
-        })
-      );
+      const payload = JSON.stringify({
+        companies: data.companies,
+        industryName: industryName || 'Market',
+        colorTheme,
+        warnings: data.warnings,
+        showTour: true,
+      });
+
+      try {
+        sessionStorage.setItem('marketintel_data', payload);
+      } catch (storageErr) {
+        // sessionStorage exceeded (~5MB limit) — try with stripped data
+        console.warn('sessionStorage full, stripping data...', storageErr);
+        const stripped = data.companies.map((c: Record<string, unknown>) => ({
+          ...c,
+          locations: Array.isArray(c.locations) ? (c.locations as unknown[]).slice(0, 10) : [],
+          description: typeof c.description === 'string' ? c.description.slice(0, 200) : '',
+        }));
+        sessionStorage.setItem(
+          'marketintel_data',
+          JSON.stringify({
+            companies: stripped,
+            industryName: industryName || 'Market',
+            colorTheme,
+            warnings: [...(data.warnings || []), 'Large dataset — some location details were trimmed to fit.'],
+            showTour: true,
+          })
+        );
+      }
 
       router.push('/map');
     } catch {
