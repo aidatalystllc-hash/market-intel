@@ -99,27 +99,56 @@ export default function UploadPage() {
     [industryName, colorTheme, router]
   );
 
+  // Parse a file in the browser (no Node.js Buffer needed)
+  const parseBrowserFile = useCallback(
+    async (file: File): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> => {
+      const ext = file.name.toLowerCase().split('.').pop();
+      const arrayBuf = await file.arrayBuffer();
+
+      if (ext === 'json') {
+        const text = new TextDecoder().decode(arrayBuf);
+        const parsed = JSON.parse(text);
+        const rows: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : [parsed];
+        if (rows.length === 0) return { columns: [], rows: [] };
+
+        // Check for nested UDU format
+        const { isNestedUduFormat, flattenUduJson } = await import('@/lib/flattenJson');
+        if (isNestedUduFormat(rows)) {
+          console.log(`Detected nested UDU format — flattening ${rows.length} rows...`);
+          return flattenUduJson(rows);
+        }
+
+        return { columns: Object.keys(rows[0]), rows };
+      }
+
+      // Excel file — use xlsx in browser mode
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(arrayBuf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      if (!ws) return { columns: [], rows: [] };
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', raw: true });
+      if (rows.length === 0) return { columns: [], rows: [] };
+      return { columns: Object.keys(rows[0]), rows };
+    },
+    []
+  );
+
   // Client-side processing for large files (>4MB)
   const processClientSide = useCallback(async () => {
     if (!companyFile) return;
 
     setLoadingStep(0); // Reading files
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
 
-    const { parseFile } = await import('@/lib/processExcel');
-    const { autoDetectColumns } = await import('@/lib/claudeMapper');
-    const { transformCompanies } = await import('@/lib/dataTransformer');
-
-    // Parse company file
-    const companyBuffer = Buffer.from(await companyFile.arrayBuffer());
-    const companyData = parseFile(companyBuffer, companyFile.name);
+    const companyData = await parseBrowserFile(companyFile);
 
     if (companyData.rows.length === 0) {
       throw new Error('No data found in company file.');
     }
 
     setLoadingStep(1); // Mapping columns
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
+    const { autoDetectColumns } = await import('@/lib/claudeMapper');
     const companyMapping = autoDetectColumns(companyData.columns);
 
     // Parse location file
@@ -127,8 +156,7 @@ export default function UploadPage() {
     let locationMapping: Record<string, string> | null = null;
 
     if (locationFile) {
-      const locationBuffer = Buffer.from(await locationFile.arrayBuffer());
-      const locationData = parseFile(locationBuffer, locationFile.name);
+      const locationData = await parseBrowserFile(locationFile);
       if (locationData.rows.length > 0) {
         locationMapping = autoDetectColumns(locationData.columns);
         locationRows = locationData.rows;
@@ -136,9 +164,10 @@ export default function UploadPage() {
     }
 
     setLoadingStep(2); // Calculating footprints
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
 
     setLoadingStep(3); // Computing M&A scores
+    const { transformCompanies } = await import('@/lib/dataTransformer');
     const companies = transformCompanies(companyData.rows, companyMapping, locationRows, locationMapping);
 
     setLoadingStep(4); // Building map
@@ -160,7 +189,7 @@ export default function UploadPage() {
     }
 
     return { companies: stripped, warnings };
-  }, [companyFile, locationFile]);
+  }, [companyFile, locationFile, parseBrowserFile]);
 
   const handleGenerate = useCallback(async () => {
     if (!companyFile) return;
