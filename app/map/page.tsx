@@ -12,6 +12,7 @@ import Tooltip from '@/components/Tooltip';
 import DetailPanel from '@/components/DetailPanel';
 import CompanyTable from '@/components/CompanyTable';
 import GuidedTour from '@/components/GuidedTour';
+import { loadData } from '@/lib/storage';
 
 // Dynamic imports for heavy components
 const MapCanvas = dynamic(() => import('@/components/MapCanvas'), { ssr: false });
@@ -81,25 +82,35 @@ export default function MapPage() {
     return () => document.body.classList.remove('map-page');
   }, []);
 
-  // Load data from sessionStorage
+  // Load data from IndexedDB (with sessionStorage fallback)
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('marketintel_data');
-      if (!raw) {
+    (async () => {
+      try {
+        // Try IndexedDB first
+        let data = await loadData() as Record<string, unknown> | null;
+
+        // Fallback to sessionStorage for backwards compatibility
+        if (!data) {
+          const raw = sessionStorage.getItem('marketintel_data');
+          if (raw) data = JSON.parse(raw);
+        }
+
+        if (!data) {
+          router.push('/');
+          return;
+        }
+
+        setCompanies((data.companies as Company[]) || []);
+        setIndustryName((data.industryName as string) || 'Market');
+        if (data.colorTheme) setColorTheme(data.colorTheme as ColorTheme);
+        if (data.warnings) setWarnings(data.warnings as string[]);
+        if (data.showTour) {
+          setTimeout(() => setTourOpen(true), 800);
+        }
+      } catch {
         router.push('/');
-        return;
       }
-      const data = JSON.parse(raw);
-      setCompanies(data.companies || []);
-      setIndustryName(data.industryName || 'Market');
-      if (data.colorTheme) setColorTheme(data.colorTheme);
-      if (data.warnings) setWarnings(data.warnings);
-      if (data.showTour) {
-        setTimeout(() => setTourOpen(true), 800);
-      }
-    } catch {
-      router.push('/');
-    }
+    })();
   }, [router]);
 
   // Keyboard shortcuts

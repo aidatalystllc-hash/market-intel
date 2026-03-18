@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { flattenUduJson, isNestedUduFormat } from './flattenJson';
 
 export interface RawSheet {
   columns: string[];
@@ -7,7 +8,7 @@ export interface RawSheet {
 
 /**
  * Parse an Excel (.xlsx/.xls) or JSON file buffer into column names and row data.
- * For very large files, uses raw values for better performance.
+ * Automatically detects and flattens nested UDU-style JSON.
  */
 export function parseFile(buffer: Buffer, filename: string): RawSheet {
   const ext = filename.toLowerCase().split('.').pop();
@@ -17,6 +18,13 @@ export function parseFile(buffer: Buffer, filename: string): RawSheet {
     const parsed = JSON.parse(text);
     const rows: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : [parsed];
     if (rows.length === 0) return { columns: [], rows: [] };
+
+    // Check if this is nested UDU format and flatten it
+    if (isNestedUduFormat(rows)) {
+      console.log(`Detected nested UDU format — flattening ${rows.length} rows...`);
+      return flattenUduJson(rows);
+    }
+
     const columns = Object.keys(rows[0]);
     return { columns, rows };
   }
@@ -29,7 +37,7 @@ export function parseFile(buffer: Buffer, filename: string): RawSheet {
   const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
-    raw: true, // Keep raw values (numbers stay numbers) for better performance
+    raw: true,
   });
 
   if (rows.length === 0) return { columns: [], rows: [] };

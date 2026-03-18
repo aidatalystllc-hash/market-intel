@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import UploadZone from '@/components/UploadZone';
 import { COLOR_THEMES } from '@/lib/types';
 import type { ColorTheme } from '@/lib/types';
+import { storeData } from '@/lib/storage';
 
 const LOADING_STEPS = [
   'Reading files...',
@@ -83,74 +84,131 @@ export default function UploadPage() {
     [readFilePreview]
   );
 
+  // Store processed data using IndexedDB (handles any size)
+  const storeAndNavigate = useCallback(
+    async (companies: Record<string, unknown>[], warnings: string[]) => {
+      await storeData({
+        companies,
+        industryName: industryName || 'Market',
+        colorTheme,
+        warnings,
+        showTour: true,
+      });
+      router.push('/map');
+    },
+    [industryName, colorTheme, router]
+  );
+
+  // Client-side processing for large files (>4MB)
+  const processClientSide = useCallback(async () => {
+    if (!companyFile) return;
+
+    setLoadingStep(0); // Reading files
+    await new Promise((r) => setTimeout(r, 100));
+
+    const { parseFile } = await import('@/lib/processExcel');
+    const { autoDetectColumns } = await import('@/lib/claudeMapper');
+    const { transformCompanies } = await import('@/lib/dataTransformer');
+
+    // Parse company file
+    const companyBuffer = Buffer.from(await companyFile.arrayBuffer());
+    const companyData = parseFile(companyBuffer, companyFile.name);
+
+    if (companyData.rows.length === 0) {
+      throw new Error('No data found in company file.');
+    }
+
+    setLoadingStep(1); // Mapping columns
+    await new Promise((r) => setTimeout(r, 100));
+    const companyMapping = autoDetectColumns(companyData.columns);
+
+    // Parse location file
+    let locationRows: Record<string, unknown>[] | null = null;
+    let locationMapping: Record<string, string> | null = null;
+
+    if (locationFile) {
+      const locationBuffer = Buffer.from(await locationFile.arrayBuffer());
+      const locationData = parseFile(locationBuffer, locationFile.name);
+      if (locationData.rows.length > 0) {
+        locationMapping = autoDetectColumns(locationData.columns);
+        locationRows = locationData.rows;
+      }
+    }
+
+    setLoadingStep(2); // Calculating footprints
+    await new Promise((r) => setTimeout(r, 100));
+
+    setLoadingStep(3); // Computing M&A scores
+    const companies = transformCompanies(companyData.rows, companyMapping, locationRows, locationMapping);
+
+    setLoadingStep(4); // Building map
+    const valid = companies.filter((c) => c.name && c.name !== 'Company 0');
+
+    // Strip heavy data for large datasets
+    const stripped = valid.map((c) => ({
+      ...c,
+      locations: c.locations.slice(0, 50),
+      description: c.description ? c.description.slice(0, 500) : '',
+    }));
+
+    const warnings: string[] = [];
+    const withCoords = stripped.filter((c) => c.lat !== null && c.lng !== null);
+    if (withCoords.length === 0) {
+      warnings.push('No companies with location data. Upload a file with latitude/longitude columns.');
+    } else if (withCoords.length < stripped.length) {
+      warnings.push(`${stripped.length - withCoords.length} companies missing coordinates.`);
+    }
+
+    return { companies: stripped, warnings };
+  }, [companyFile, locationFile]);
+
   const handleGenerate = useCallback(async () => {
     if (!companyFile) return;
     setIsProcessing(true);
     setError('');
 
-    const formData = new FormData();
-    formData.append('companyFile', companyFile);
-    if (locationFile) formData.append('locationFile', locationFile);
-
-    // Start loading animation and API call in parallel
-    const animationPromise = (async () => {
-      for (let i = 0; i < LOADING_STEPS.length - 1; i++) {
-        setLoadingStep(i);
-        await new Promise((r) => setTimeout(r, 800));
-      }
-    })();
+    // Decide: client-side or server-side processing
+    const totalSize = companyFile.size + (locationFile?.size || 0);
+    const useClientSide = totalSize > 4 * 1024 * 1024; // > 4MB → client-side
 
     try {
-      const [res] = await Promise.all([
-        fetch('/api/process', { method: 'POST', body: formData }),
-        animationPromise,
-      ]);
-      setLoadingStep(LOADING_STEPS.length - 1);
+      if (useClientSide) {
+        // Large files: process entirely in the browser
+        console.log(`Large files (${(totalSize / 1024 / 1024).toFixed(1)}MB) — processing client-side`);
+        const result = await processClientSide();
+        if (!result) throw new Error('Processing returned no data.');
+        storeAndNavigate(result.companies as Record<string, unknown>[], result.warnings);
+      } else {
+        // Small files: use server API (can use Claude for column mapping)
+        const formData = new FormData();
+        formData.append('companyFile', companyFile);
+        if (locationFile) formData.append('locationFile', locationFile);
 
-      const data = await res.json();
+        // Animation + API in parallel
+        const animPromise = (async () => {
+          for (let i = 0; i < LOADING_STEPS.length - 1; i++) {
+            setLoadingStep(i);
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        })();
 
-      if (!res.ok) {
-        setError(data.error || 'Processing failed.');
-        setIsProcessing(false);
-        return;
+        const [res] = await Promise.all([
+          fetch('/api/process', { method: 'POST', body: formData }),
+          animPromise,
+        ]);
+        setLoadingStep(LOADING_STEPS.length - 1);
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Processing failed.');
+
+        storeAndNavigate(data.companies, data.warnings || []);
       }
-
-      const payload = JSON.stringify({
-        companies: data.companies,
-        industryName: industryName || 'Market',
-        colorTheme,
-        warnings: data.warnings,
-        showTour: true,
-      });
-
-      try {
-        sessionStorage.setItem('marketintel_data', payload);
-      } catch (storageErr) {
-        // sessionStorage exceeded (~5MB limit) — try with stripped data
-        console.warn('sessionStorage full, stripping data...', storageErr);
-        const stripped = data.companies.map((c: Record<string, unknown>) => ({
-          ...c,
-          locations: Array.isArray(c.locations) ? (c.locations as unknown[]).slice(0, 10) : [],
-          description: typeof c.description === 'string' ? c.description.slice(0, 200) : '',
-        }));
-        sessionStorage.setItem(
-          'marketintel_data',
-          JSON.stringify({
-            companies: stripped,
-            industryName: industryName || 'Market',
-            colorTheme,
-            warnings: [...(data.warnings || []), 'Large dataset — some location details were trimmed to fit.'],
-            showTour: true,
-          })
-        );
-      }
-
-      router.push('/map');
-    } catch {
-      setError('Failed to process files. Please try again.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to process files.';
+      setError(msg);
       setIsProcessing(false);
     }
-  }, [companyFile, locationFile, industryName, colorTheme, router]);
+  }, [companyFile, locationFile, processClientSide, storeAndNavigate]);
 
   return (
     <div className="min-h-screen flex flex-col items-center px-6 py-12 bg-[var(--bg)] overflow-y-auto">
