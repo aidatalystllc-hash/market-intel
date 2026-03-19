@@ -120,6 +120,84 @@ export default function Page() {
   );
 }
 
+function ShareBanner({ datasetId }: { datasetId: string }) {
+  const [copied, setCopied] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  if (dismissed) return null;
+
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/?d=${datasetId}`
+    : `/?d=${datasetId}`;
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '6px 14px',
+      background: 'linear-gradient(135deg, rgba(176,125,16,0.06), rgba(176,125,16,0.02))',
+      borderBottom: '1px solid rgba(176,125,16,0.15)',
+      fontSize: 11,
+      flexShrink: 0,
+      zIndex: 40,
+    }}>
+      <span style={{ fontSize: 13 }}>🔗</span>
+      <span style={{ color: 'var(--tx2)', fontWeight: 500 }}>Share this map:</span>
+      <code style={{
+        flex: 1,
+        padding: '3px 8px',
+        background: 'var(--bg2)',
+        border: '1px solid var(--bd)',
+        borderRadius: 4,
+        fontSize: 10,
+        color: 'var(--acc)',
+        fontFamily: "'JetBrains Mono', monospace",
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {shareUrl}
+      </code>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(shareUrl);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        style={{
+          padding: '3px 10px',
+          borderRadius: 4,
+          border: '1px solid var(--acc)',
+          background: copied ? 'var(--acc)' : 'transparent',
+          color: copied ? 'white' : 'var(--acc)',
+          fontSize: 10,
+          fontWeight: 600,
+          cursor: 'pointer',
+          fontFamily: "'Syne', sans-serif",
+          transition: 'all 0.15s',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {copied ? '✓ Copied!' : 'Copy Link'}
+      </button>
+      <button
+        onClick={() => setDismissed(true)}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--tx3)',
+          cursor: 'pointer',
+          fontSize: 14,
+          padding: '0 2px',
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function DashboardPage() {
   const searchParams = useSearchParams();
   const datasetId = searchParams.get('d');
@@ -389,6 +467,11 @@ function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {/* ── SHAREABLE LINK BANNER (visible when dataset has an ID) ── */}
+      {datasetId && (
+        <ShareBanner datasetId={datasetId} />
+      )}
 
       {/* ── SEARCH OVERLAY ── */}
       <SearchBar

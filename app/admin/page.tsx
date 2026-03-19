@@ -345,13 +345,20 @@ export default function AdminPage() {
       });
 
       // Save to server (Vercel Blob) with unique dataset ID for sharing
+      // Strip heavy data to fit within reasonable size limits
       let datasetId = '';
       try {
+        const lightCompanies = companies.map((c: Record<string, unknown>) => ({
+          ...c,
+          locations: Array.isArray(c.locations) ? (c.locations as unknown[]).slice(0, 30) : [],
+          description: typeof c.description === 'string' ? c.description.slice(0, 300) : '',
+        }));
+
         const saveRes = await fetch('/api/save-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            companies,
+            companies: lightCompanies,
             industryName: industryName || 'Market',
             warnings,
           }),
@@ -359,9 +366,12 @@ export default function AdminPage() {
         const saveData = await saveRes.json();
         if (saveData.datasetId) {
           datasetId = saveData.datasetId;
+          console.log('Dataset saved! Share link: /?d=' + datasetId);
+        } else if (saveData.error) {
+          console.warn('Save failed:', saveData.error);
         }
       } catch (e) {
-        console.warn('Could not save to server (link sharing may not work):', e);
+        console.warn('Could not save to server:', e);
       }
 
       // Navigate to the map with the dataset ID in the URL

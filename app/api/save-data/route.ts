@@ -25,13 +25,30 @@ export async function POST(req: NextRequest) {
     const rand = Math.random().toString(36).slice(2, 8);
     const datasetId = `${slug}-${rand}`;
 
+    // Further strip data if needed to stay under Blob limits
+    const stripped = companies.map((c: Record<string, unknown>) => {
+      const copy = { ...c };
+      // Cap locations to 20 per company
+      if (Array.isArray(copy.locations)) {
+        copy.locations = (copy.locations as unknown[]).slice(0, 20);
+      }
+      // Cap description
+      if (typeof copy.description === 'string' && copy.description.length > 300) {
+        copy.description = copy.description.slice(0, 300);
+      }
+      return copy;
+    });
+
     const payload = JSON.stringify({
-      companies,
+      companies: stripped,
       industryName: industryName || 'Market',
       warnings: warnings || [],
       datasetId,
       savedAt: new Date().toISOString(),
     });
+
+    const sizeMB = payload.length / (1024 * 1024);
+    console.log(`Saving dataset ${datasetId}: ${stripped.length} companies, ${sizeMB.toFixed(1)}MB`);
 
     // Save to Vercel Blob with unique filename
     const blob = await put(`datasets/${datasetId}.json`, payload, {
@@ -46,11 +63,12 @@ export async function POST(req: NextRequest) {
       url: blob.url,
       shareLink: `/?d=${datasetId}`,
       size: payload.length,
-      companiesCount: companies.length,
+      sizeMB: sizeMB.toFixed(1),
+      companiesCount: stripped.length,
     });
   } catch (err) {
     console.error('Save data error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: `Failed to save data: ${message}` }, { status: 500 });
+    return NextResponse.json({ error: `Failed to save: ${message.slice(0, 200)}` }, { status: 500 });
   }
 }
