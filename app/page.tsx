@@ -400,6 +400,7 @@ export default function DashboardPage() {
         sortKey={sortKey}
         sortAscending={sortAscending}
         onSort={handleSort}
+        activeFilters={filters}
       />
 
       {/* ── GUIDED TOUR ── */}

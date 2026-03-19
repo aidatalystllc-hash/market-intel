@@ -15,6 +15,122 @@ const LOADING_STEPS = [
   'Building your map...',
 ];
 
+const MAX_FILE_SIZE_MB = 300;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const SUPPORTED_EXTENSIONS = ['xlsx', 'json'];
+
+type UploadError = {
+  type: string;
+  detail: string;
+  suggestion: string;
+};
+
+function fileSizeMB(file: File): string {
+  return (file.size / (1024 * 1024)).toFixed(1);
+}
+
+function getExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
+}
+
+function validateFileSize(file: File): UploadError | null {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return {
+      type: 'File Too Large',
+      detail: `File is ${fileSizeMB(file)}MB \u2014 exceeds the ${MAX_FILE_SIZE_MB}MB browser limit.`,
+      suggestion: 'Filter to fewer rows in Excel before uploading.',
+    };
+  }
+  return null;
+}
+
+function validateFileFormat(file: File): UploadError | null {
+  const ext = getExtension(file.name);
+  if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+    return {
+      type: 'Unsupported File Type',
+      detail: `This file type (.${ext || '???'}) is not supported.`,
+      suggestion: 'Upload .xlsx or .json only.',
+    };
+  }
+  return null;
+}
+
+function validateNotEmpty(rows: unknown[], label: string): UploadError | null {
+  if (!rows || rows.length === 0) {
+    return {
+      type: 'Empty File',
+      detail: `${label} file appears empty.`,
+      suggestion: 'Check that data rows exist below the header.',
+    };
+  }
+  return null;
+}
+
+function validateLatLng(columns: string[]): UploadError | null {
+  const lower = columns.map((c) => c.toLowerCase().replace(/[^a-z]/g, ''));
+  const hasLat = lower.some((c) => c === 'lat' || c === 'latitude' || c.includes('lat'));
+  const hasLng = lower.some(
+    (c) => c === 'lng' || c === 'lon' || c === 'longitude' || c.includes('lng') || c.includes('lon')
+  );
+  if (!hasLat || !hasLng) {
+    return {
+      type: 'No Latitude/Longitude',
+      detail: 'No latitude/longitude columns found in location file.',
+      suggestion: 'Add lat/lng columns so locations can be placed on the map.',
+    };
+  }
+  return null;
+}
+
+function validateDomainMatch(companyColumns: string[], locationColumns: string[]): UploadError | null {
+  const domainAliases = ['domain', 'website', 'url', 'site', 'web'];
+  const hasDomain = (cols: string[]) =>
+    cols.some((c) => {
+      const lower = c.toLowerCase().replace(/[^a-z]/g, '');
+      return domainAliases.some((alias) => lower.includes(alias));
+    });
+  if (!hasDomain(companyColumns) || !hasDomain(locationColumns)) {
+    return {
+      type: 'No Domain Match',
+      detail: 'Could not find matching domain column between files.',
+      suggestion: 'Both files need a domain/website column to link companies to locations.',
+    };
+  }
+  return null;
+}
+
+/* ── Error Card ── */
+function ErrorCard({ error, onDismiss }: { error: UploadError; onDismiss: () => void }) {
+  return (
+    <div className="w-full max-w-2xl mb-4 bg-[rgba(176,58,26,0.06)] border border-[rgba(176,58,26,0.35)] rounded-lg px-5 py-4 relative">
+      {/* Dismiss button */}
+      <button
+        onClick={onDismiss}
+        className="absolute top-3 right-3 text-[rgba(176,58,26,0.5)] hover:text-[#b03a1a] text-lg leading-none"
+        aria-label="Dismiss error"
+      >
+        &times;
+      </button>
+      <div className="flex items-start gap-3 pr-6">
+        {/* Warning icon */}
+        <div className="flex-shrink-0 mt-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b03a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </div>
+        <div>
+          <p className="text-sm font-bold text-[#b03a1a] mb-1">{error.type}</p>
+          <p className="text-sm text-[#b03a1a]">{error.detail}</p>
+          <p className="text-xs text-[var(--tx2)] mt-1.5">{error.suggestion}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Password Gate ── */
 function PasswordGate({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [password, setPassword] = useState('');
@@ -114,7 +230,7 @@ export default function AdminPage() {
   const [colorTheme, setColorTheme] = useState<ColorTheme>(COLOR_THEMES[0]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
-  const [error, setError] = useState('');
+  const [uploadError, setUploadError] = useState<UploadError | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
   const readFilePreview = useCallback(
@@ -143,14 +259,32 @@ export default function AdminPage() {
 
   const handleCompanyFile = useCallback(
     async (file: File) => {
+      setUploadError(null);
+
+      // Validate file size before anything
+      const sizeErr = validateFileSize(file);
+      if (sizeErr) { setUploadError(sizeErr); return; }
+
+      // Validate file format
+      const fmtErr = validateFileFormat(file);
+      if (fmtErr) { setUploadError(fmtErr); return; }
+
       setCompanyFile(file);
-      setError('');
       try {
         const { columns, rowCount } = await readFilePreview(file);
+        // Check for empty file
+        const emptyErr = validateNotEmpty(Array(rowCount).fill(null), 'Company');
+        if (emptyErr) { setUploadError(emptyErr); setCompanyFile(null); return; }
         setCompanyColumns(columns);
         setCompanyRows(rowCount);
-      } catch {
-        setError('Could not read company file. Check that it is a valid .xlsx or .json file.');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setUploadError({
+          type: 'Parse Error',
+          detail: 'Could not read file. It may be corrupted.',
+          suggestion: `Error: ${msg}`,
+        });
+        setCompanyFile(null);
       }
     },
     [readFilePreview]
@@ -158,14 +292,40 @@ export default function AdminPage() {
 
   const handleLocationFile = useCallback(
     async (file: File) => {
+      setUploadError(null);
+
+      // Validate file size before anything
+      const sizeErr = validateFileSize(file);
+      if (sizeErr) { setUploadError(sizeErr); return; }
+
+      // Validate file format
+      const fmtErr = validateFileFormat(file);
+      if (fmtErr) { setUploadError(fmtErr); return; }
+
       setLocationFile(file);
-      setError('');
       try {
         const { columns, rowCount } = await readFilePreview(file);
+        // Check for empty file
+        const emptyErr = validateNotEmpty(Array(rowCount).fill(null), 'Location');
+        if (emptyErr) { setUploadError(emptyErr); setLocationFile(null); return; }
+
+        // Check for lat/lng columns
+        const latLngErr = validateLatLng(columns);
+        if (latLngErr) {
+          // This is a warning, not blocking — set it but keep the file
+          setUploadError(latLngErr);
+        }
+
         setLocationColumns(columns);
         setLocationRows(rowCount);
-      } catch {
-        setError('Could not read location file. Check that it is a valid .xlsx or .json file.');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setUploadError({
+          type: 'Parse Error',
+          detail: 'Could not read file. It may be corrupted.',
+          suggestion: `Error: ${msg}`,
+        });
+        setLocationFile(null);
       }
     },
     [readFilePreview]
@@ -282,7 +442,17 @@ export default function AdminPage() {
   const handleGenerate = useCallback(async () => {
     if (!companyFile) return;
     setIsProcessing(true);
-    setError('');
+    setUploadError(null);
+
+    // Check domain match if both files are present
+    if (locationFile && companyColumns.length > 0 && locationColumns.length > 0) {
+      const domainErr = validateDomainMatch(companyColumns, locationColumns);
+      if (domainErr) {
+        setUploadError(domainErr);
+        setIsProcessing(false);
+        return;
+      }
+    }
 
     // Decide: client-side or server-side processing
     const totalSize = companyFile.size + (locationFile?.size || 0);
@@ -322,10 +492,14 @@ export default function AdminPage() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to process files.';
-      setError(msg);
+      setUploadError({
+        type: 'Processing Error',
+        detail: msg,
+        suggestion: 'Try re-exporting the file from Excel, or check the file is not corrupted.',
+      });
       setIsProcessing(false);
     }
-  }, [companyFile, locationFile, processClientSide, storeAndNavigate]);
+  }, [companyFile, locationFile, companyColumns, locationColumns, processClientSide, storeAndNavigate]);
 
   // Show password gate if not authenticated
   if (!authenticated) {
@@ -614,6 +788,11 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ── ERROR CARD (above upload zones) ── */}
+      {uploadError && (
+        <ErrorCard error={uploadError} onDismiss={() => setUploadError(null)} />
+      )}
+
       {/* ── UPLOAD ZONES ── */}
       <div className="flex gap-5 w-full max-w-2xl mb-8">
         <UploadZone
@@ -675,13 +854,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <div className="w-full max-w-2xl bg-[rgba(176,58,26,0.06)] border border-[rgba(176,58,26,0.2)] rounded-lg px-4 py-3 mb-4 text-sm text-[var(--nat)]">
-          {error}
-        </div>
-      )}
-
       {/* Generate Button */}
       {companyFile && !isProcessing && (
         <button
@@ -740,7 +912,7 @@ export default function AdminPage() {
               handleCompanyFile(file);
               setIndustryName('Tanning Salons');
             } catch {
-              setError('Sample data not available.');
+              setUploadError({ type: 'Load Error', detail: 'Sample data not available.', suggestion: 'Try uploading your own file instead.' });
             }
           }}
           className="text-[var(--acc)] hover:underline cursor-pointer"

@@ -29,6 +29,12 @@ export default function StatBar({ companies }: StatBarProps) {
 
     const totalLocations = companies.reduce((sum, c) => sum + (c.locationCount || 0), 0);
 
+    const totalReviews = companies.reduce((sum, c) => sum + (c.totalReviews ?? 0), 0);
+    const totalPhotos = companies.reduce((sum, c) => sum + (c.totalPhotos ?? 0), 0);
+
+    const fmtK = (n: number): string =>
+      n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : n.toLocaleString();
+
     return [
       { label: 'Companies', value: total.toLocaleString() },
       { label: 'PE-Backed', value: peBacked.toLocaleString() },
@@ -36,6 +42,8 @@ export default function StatBar({ companies }: StatBarProps) {
       { label: 'Regional', value: regional.toLocaleString() },
       { label: 'Avg Rating', value: avgRating },
       { label: 'Total Locs', value: totalLocations.toLocaleString() },
+      { label: 'Total Reviews', value: fmtK(totalReviews) },
+      { label: 'Total Photos', value: fmtK(totalPhotos) },
     ];
   }, [companies]);
 

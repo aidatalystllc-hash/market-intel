@@ -7,6 +7,17 @@ import { getMALabel } from '@/lib/maScoreCalc';
 
 /* ── Helpers ── */
 
+function formatUSPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return phone;
+}
+
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -510,7 +521,7 @@ export default function DetailPanel({
             }}
           >
             <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--acc)' }}>
-              {company.score}
+              {company.score.toFixed(1)}
             </span>
             <span style={{ fontSize: 11, color: 'var(--tx3)' }}>/100</span>
           </div>
@@ -649,17 +660,32 @@ export default function DetailPanel({
                 </div>
               )}
               {company.executiveEmail && (
+                <div style={{ marginBottom: 2 }}>
+                  <a
+                    href={`mailto:${company.executiveEmail}`}
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--acc)',
+                      textDecoration: 'none',
+                      fontWeight: 500,
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {company.executiveEmail}
+                  </a>
+                </div>
+              )}
+              {company.executivePhone && (
                 <a
-                  href={`mailto:${company.executiveEmail}`}
+                  href={`tel:${company.executivePhone.replace(/[^\d+]/g, '')}`}
                   style={{
                     fontSize: 11,
-                    color: 'var(--acc)',
+                    color: 'var(--tx2)',
                     textDecoration: 'none',
                     fontWeight: 500,
-                    wordBreak: 'break-all',
                   }}
                 >
-                  {company.executiveEmail}
+                  {formatUSPhone(company.executivePhone)}
                 </a>
               )}
             </div>

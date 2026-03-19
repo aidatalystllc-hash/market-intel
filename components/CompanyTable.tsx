@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import type { Company } from '@/lib/types';
+import type { Company, FilterState } from '@/lib/types';
 
 interface CompanyTableProps {
   companies: Company[];
@@ -10,6 +10,7 @@ interface CompanyTableProps {
   sortKey: string;
   sortAscending: boolean;
   onSort: (key: string) => void;
+  activeFilters?: FilterState;
 }
 
 const FOOTPRINT_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -32,6 +33,9 @@ const COLUMNS: ColumnDef[] = [
   { key: 'ownership', label: 'Ownership', width: '95px', align: 'center' },
   { key: 'locationCount', label: 'Locations', width: '75px', align: 'right' },
   { key: 'avgRating', label: 'Avg Rating', width: '80px', align: 'right' },
+  { key: 'employeeSize', label: 'Employees', width: '80px', align: 'center' },
+  { key: 'totalReviews', label: 'Reviews', width: '70px', align: 'right' },
+  { key: 'totalPhotos', label: 'Photos', width: '65px', align: 'right' },
   { key: 'services', label: 'Services', width: '180px' },
   { key: 'score', label: 'Score', width: '65px', align: 'right' },
   { key: 'maScore', label: 'M&A Score', width: '80px', align: 'right' },
@@ -47,6 +51,17 @@ const SORT_DROPDOWN_OPTIONS = [
   { key: 'founded', label: 'Founded' },
 ];
 
+// Map active filter keys to column keys for gold highlight
+function getFilteredColumnKeys(filters?: FilterState): Set<string> {
+  const keys = new Set<string>();
+  if (!filters) return keys;
+  if (filters.footprint !== 'all') keys.add('footprint');
+  if (filters.ownership !== 'all') keys.add('ownership');
+  if (filters.service) keys.add('services');
+  if (filters.minRating > 0) keys.add('avgRating');
+  return keys;
+}
+
 export default function CompanyTable({
   companies,
   selectedId,
@@ -54,7 +69,10 @@ export default function CompanyTable({
   sortKey,
   sortAscending,
   onSort,
+  activeFilters,
 }: CompanyTableProps) {
+  const filteredCols = useMemo(() => getFilteredColumnKeys(activeFilters), [activeFilters]);
+
   const handleHeaderClick = useCallback(
     (key: string) => {
       onSort(key);
@@ -182,7 +200,7 @@ export default function CompanyTable({
                 fontWeight: 500,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: sortKey === col.key ? '#b07d10' : 'var(--tx3)',
+                color: sortKey === col.key || filteredCols.has(col.key) ? '#b07d10' : 'var(--tx3)',
                 textAlign: col.align || 'left',
                 cursor: 'pointer',
                 userSelect: 'none',
@@ -366,13 +384,17 @@ function VirtualizedBody({
                   </span>
                 </div>
 
-                {/* Ownership */}
+                {/* Ownership — single-line only */}
                 <div
                   style={{
                     width: COLUMNS[3].width,
                     flexShrink: 0,
                     textAlign: 'center',
                     padding: '0 4px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: 100,
                   }}
                 >
                   {company.isPE ? (
@@ -387,17 +409,10 @@ function VirtualizedBody({
                         color: 'var(--pe)',
                       }}
                     >
-                      PE {company.peFirm ? `\u00B7 ${company.peFirm}` : ''}
+                      PE
                     </span>
                   ) : company.isFamily ? (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: 'var(--tx3)',
-                      }}
-                    >
-                      Family
-                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--tx3)' }}>Family</span>
                   ) : (
                     <span style={{ fontSize: 10, color: 'var(--tx3)' }}>Independent</span>
                   )}
@@ -437,10 +452,61 @@ function VirtualizedBody({
                   {company.avgRating != null ? company.avgRating.toFixed(1) : '--'}
                 </div>
 
-                {/* Services */}
+                {/* Employees */}
                 <div
                   style={{
                     width: COLUMNS[6].width,
+                    flexShrink: 0,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: 'var(--tx2)',
+                    textAlign: 'center',
+                    padding: '0 4px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {company.employeeSize || '--'}
+                </div>
+
+                {/* Reviews */}
+                <div
+                  style={{
+                    width: COLUMNS[7].width,
+                    flexShrink: 0,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'var(--tx)',
+                    textAlign: 'right',
+                    padding: '0 4px',
+                  }}
+                >
+                  {company.totalReviews != null ? company.totalReviews.toLocaleString() : '--'}
+                </div>
+
+                {/* Photos */}
+                <div
+                  style={{
+                    width: COLUMNS[8].width,
+                    flexShrink: 0,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'var(--tx2)',
+                    textAlign: 'right',
+                    padding: '0 4px',
+                  }}
+                >
+                  {company.totalPhotos != null ? company.totalPhotos.toLocaleString() : '--'}
+                </div>
+
+                {/* Services */}
+                <div
+                  style={{
+                    width: COLUMNS[9].width,
                     flexShrink: 0,
                     display: 'flex',
                     gap: 3,
@@ -482,10 +548,10 @@ function VirtualizedBody({
                   )}
                 </div>
 
-                {/* Score */}
+                {/* Score — rounded to 1 decimal */}
                 <div
                   style={{
-                    width: COLUMNS[7].width,
+                    width: COLUMNS[10].width,
                     flexShrink: 0,
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 11,
@@ -495,13 +561,13 @@ function VirtualizedBody({
                     padding: '0 4px',
                   }}
                 >
-                  {company.score}
+                  {company.score.toFixed(1)}
                 </div>
 
                 {/* M&A Score */}
                 <div
                   style={{
-                    width: COLUMNS[8].width,
+                    width: COLUMNS[11].width,
                     flexShrink: 0,
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 11,
