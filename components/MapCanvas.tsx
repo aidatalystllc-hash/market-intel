@@ -111,11 +111,13 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
     if (!canvas) return;
     const cW = canvas.width;
     const cH = canvas.height;
+    if (cW === 0 || cH === 0) return;
     const b = bounds.current;
+    if (!isFinite(b.minLat) || !isFinite(b.maxLat) || !isFinite(b.minLng) || !isFinite(b.maxLng)) return;
     const PAD = 0.08;
     const latRange = b.maxLat - b.minLat;
     const lngRange = b.maxLng - b.minLng;
-    if (latRange === 0 || lngRange === 0) return;
+    if (latRange <= 0 || lngRange <= 0) return;
 
     const scaleX = (cW * (1 - PAD * 2)) / lngRange;
     const scaleY = (cH * (1 - PAD * 2)) / (latRange * 0.85);
@@ -160,8 +162,15 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
     if (!ctx) return;
     const cW = canvas.width;
     const cH = canvas.height;
+
+    // Skip drawing if canvas has no size yet
+    if (cW === 0 || cH === 0) return;
+
     const s = mapState.current;
     const b = bounds.current;
+
+    // Skip if bounds are invalid (NaN)
+    if (!isFinite(b.minLat) || !isFinite(b.maxLat) || !isFinite(b.minLng) || !isFinite(b.maxLng)) return;
 
     ctx.clearRect(0, 0, cW, cH);
     ctx.fillStyle = '#edeae2';
@@ -185,23 +194,25 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       ctx.stroke();
     }
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(28,24,20,0.04)';
-    ctx.lineWidth = 0.5;
-    const gridStep = 1;
-    for (let lo = Math.floor(b.minLng); lo <= Math.ceil(b.maxLng); lo += gridStep) {
-      const [x] = proj(b.minLat, lo);
-      ctx.beginPath();
-      ctx.moveTo(x, -10);
-      ctx.lineTo(x, cH + 10);
-      ctx.stroke();
-    }
-    for (let la = Math.floor(b.minLat); la <= Math.ceil(b.maxLat); la += gridStep) {
-      const [, y] = proj(la, b.minLng);
-      ctx.beginPath();
-      ctx.moveTo(-10, y);
-      ctx.lineTo(cW + 10, y);
-      ctx.stroke();
+    // Grid lines — guard against NaN/infinite loop
+    if (isFinite(b.minLng) && isFinite(b.maxLng) && isFinite(b.minLat) && isFinite(b.maxLat)) {
+      ctx.strokeStyle = 'rgba(28,24,20,0.04)';
+      ctx.lineWidth = 0.5;
+      const gridStep = Math.max(1, Math.floor((b.maxLng - b.minLng) / 20));
+      for (let lo = Math.floor(b.minLng); lo <= Math.ceil(b.maxLng); lo += gridStep) {
+        const [x] = proj(b.minLat, lo);
+        ctx.beginPath();
+        ctx.moveTo(x, -10);
+        ctx.lineTo(x, cH + 10);
+        ctx.stroke();
+      }
+      for (let la = Math.floor(b.minLat); la <= Math.ceil(b.maxLat); la += gridStep) {
+        const [, y] = proj(la, b.minLng);
+        ctx.beginPath();
+        ctx.moveTo(-10, y);
+        ctx.lineTo(cW + 10, y);
+        ctx.stroke();
+      }
     }
 
     if (heatMode) {
@@ -209,9 +220,12 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       return;
     }
 
-    // City labels (at sufficient zoom)
+    // Determine if this is a large dataset — optimize rendering
+    const isLargeDataset = companies.length > 2000;
+
+    // City labels (at sufficient zoom, skip for large datasets at overview zoom)
     const scale100 = s.scale * 100;
-    if (scale100 > 60) {
+    if (scale100 > 60 && (!isLargeDataset || scale100 > 200)) {
       const majorCities = [
         { n: 'Houston', la: 29.76, lo: -95.37 },
         { n: 'Dallas', la: 32.78, lo: -96.8 },
@@ -247,47 +261,58 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       }
     }
 
-    // Sort: local first (bottom), national last (top)
-    const sorted = [...companies]
-      .filter((c) => c.lat !== null && c.lng !== null)
-      .sort((a, b) => {
-        const order = { local: 0, regional: 1, national: 2 };
-        return order[a.footprint] - order[b.footprint];
-      });
+    // Filter and sort companies with coordinates
+    const withCoords = companies.filter((c) => c.lat !== null && c.lng !== null);
+    const sorted = withCoords.sort((a, b) => {
+      const order: Record<string, number> = { local: 0, regional: 1, national: 2 };
+      return (order[a.footprint] || 0) - (order[b.footprint] || 0);
+    });
+
+    // Disable shadows for large datasets (major performance bottleneck)
+    const useShadows = !isLargeDataset;
 
     for (const c of sorted) {
       const [x, y] = proj(c.lat!, c.lng!);
       if (x < -30 || x > cW + 30 || y < -30 || y > cH + 30) continue;
 
       const lc = Math.max(c.locationCount || 1, 1);
-      const r = Math.min(Math.max(Math.sqrt(lc) * 4, 6), 28);
+      // Smaller dots for large datasets to reduce overlap
+      const r = isLargeDataset
+        ? Math.min(Math.max(Math.sqrt(lc) * 2.5, 3), 18)
+        : Math.min(Math.max(Math.sqrt(lc) * 4, 6), 28);
       const col = getFootprintColor(c.footprint);
 
-      // Outer glow for non-local companies
-      if (c.footprint !== 'local' || lc > 3) {
+      // Outer glow — skip for local companies in large datasets
+      if (!isLargeDataset && (c.footprint !== 'local' || lc > 3)) {
         ctx.beginPath();
         ctx.arc(x, y, r + 5, 0, Math.PI * 2);
         ctx.fillStyle = col + '18';
         ctx.fill();
       }
 
-      // Main circle with shadow
-      ctx.shadowColor = 'rgba(0,0,0,0.18)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetY = 2;
+      // Main circle
+      if (useShadows) {
+        ctx.shadowColor = 'rgba(0,0,0,0.18)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+      }
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = c.footprint === 'local' ? col + '99' : col + 'ee';
       ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
+      if (useShadows) {
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+      }
 
-      // Stroke
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = col + '55';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      // Stroke — skip for local in large datasets
+      if (!isLargeDataset || c.footprint !== 'local') {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = col + '55';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
 
       // Gold ring: high rating
       if (c.avgRating && c.avgRating >= 4.8) {
@@ -318,8 +343,8 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
         ctx.setLineDash([]);
       }
 
-      // Label for larger companies when zoomed in
-      if (scale100 > 100 && (c.footprint === 'national' || lc >= 5)) {
+      // Labels — only for national/large companies when zoomed in, skip in large datasets unless very zoomed
+      if (scale100 > (isLargeDataset ? 300 : 100) && (c.footprint === 'national' || lc >= 5)) {
         ctx.font = `600 ${Math.min(11, r * 0.9)}px 'Syne', sans-serif`;
         ctx.fillStyle = 'rgba(28,24,20,0.75)';
         ctx.textAlign = 'center';
@@ -531,11 +556,18 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       prevCompaniesRef.current = companies;
       calcBounds();
       // Fit viewport on first real data load (from IndexedDB async load)
-      // but preserve user zoom/pan on subsequent filter changes
       if (wasEmpty && companies.length > 0) {
         resize();
         fitToData();
         hasInitialFit.current = true;
+        // Retry fit after a short delay in case canvas wasn't sized yet
+        setTimeout(() => {
+          resize();
+          calcBounds();
+          fitToData();
+          draw();
+          drawMinimap();
+        }, 200);
       }
     }
     draw();
