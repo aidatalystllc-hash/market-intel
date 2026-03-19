@@ -248,6 +248,33 @@ export default function LocationDetailPanel({
         </button>
       </div>
 
+      {/* ── Scope Banner: LOCATION-SPECIFIC ── */}
+      <div style={{
+        margin: '0 14px 8px',
+        padding: '6px 12px',
+        background: 'linear-gradient(135deg, rgba(26,112,64,0.06), rgba(26,112,64,0.02))',
+        border: '1px solid rgba(26,112,64,0.15)',
+        borderRadius: 6,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+      }}>
+        <span style={{ fontSize: 13 }}>📍</span>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 9,
+          fontWeight: 600,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: '#1a7040',
+        }}>
+          Single Location View
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--tx3)', marginLeft: 'auto' }}>
+          {location.city && location.state ? `${location.city}, ${location.state}` : 'Individual branch'}
+        </span>
+      </div>
+
       <div style={{ padding: '6px 20px 28px' }}>
         {/* ── Header: Parent company logo + name + link ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
@@ -553,7 +580,142 @@ export default function LocationDetailPanel({
             </>
           )}
         </Section>
+
+        {/* ── Location Enrichment ── */}
+        <Section title="📍 Enrich This Location">
+          <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
+            Scrapes this specific location&apos;s page for hours, local services, pricing, and amenities — not the whole company.
+          </div>
+          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} />
+        </Section>
+
+        {/* ── Separator + Company-Wide Enrichment ── */}
+        <div style={{ margin: '12px 0', padding: '8px 0', borderTop: '1.5px dashed var(--bd2)' }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#1a4f96',
+            marginBottom: 4,
+          }}>
+            🏢 Company-Wide Enrichment
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
+            These enrich data about {parentCompany.name} as a whole — all locations nationwide.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="pe-news" label="🏦 PE & M&A" desc="Investors, deals" />
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" />
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" />
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Enrich Button Components ── */
+
+function LocationEnrichButton({ domain, locationName }: { domain: string; locationName: string }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState('');
+
+  const handleEnrich = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, enrichType: 'location-detail' }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.enrichedData && Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]).length > 0) {
+        setResult(data.enrichedData);
+      } else { setError('No location-specific data found.'); }
+    } catch { setError('Enrichment failed.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <button onClick={handleEnrich} disabled={loading} style={{
+        width: '100%', padding: '9px 0', border: '1px solid #1a7040', borderRadius: 6,
+        background: loading ? 'var(--bg3)' : 'rgba(26,112,64,0.04)', color: '#1a7040',
+        fontSize: 12, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
+        fontFamily: "'Syne', sans-serif", opacity: loading ? 0.6 : 1,
+      }}>
+        {loading ? '⟳ Searching...' : `📍 Enrich "${locationName || 'This Location'}"`}
+      </button>
+      {error && <div style={{ fontSize: 10, color: 'var(--tx2)', marginTop: 4, textAlign: 'center' }}>{error}</div>}
+      {result && (
+        <div style={{ marginTop: 8, padding: 10, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 6 }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>📍 Location Data Found</div>
+          {!!result.local_phone && <div style={{ fontSize: 11, marginBottom: 3 }}>📞 {String(result.local_phone)}</div>}
+          {!!result.hours && <div style={{ fontSize: 11, marginBottom: 3 }}>🕐 {String(result.hours).slice(0, 150)}</div>}
+          {!!result.local_address && <div style={{ fontSize: 11, marginBottom: 3 }}>📍 {String(result.local_address)}</div>}
+          {!!result.services_at_location && Array.isArray(result.services_at_location) && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+              {(result.services_at_location as string[]).slice(0, 8).map((s, i) => (
+                <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(26,112,64,.08)', color: '#1a7040', border: '1px solid rgba(26,112,64,.15)', fontFamily: "'JetBrains Mono', monospace" }}>{s}</span>
+              ))}
+            </div>
+          )}
+          {!!result.amenities && Array.isArray(result.amenities) && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+              {(result.amenities as string[]).slice(0, 8).map((a, i) => (
+                <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--tx2)', border: '1px solid var(--bd)' }}>{a}</span>
+              ))}
+            </div>
+          )}
+          {!!result.booking_link && <div style={{ marginTop: 4 }}><a href={String(result.booking_link)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500 }}>Book Appointment ↗</a></div>}
+          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic', marginTop: 4 }}>Enriched {new Date().toLocaleTimeString()}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompanyEnrichButton({ domain, enrichType, label, desc }: { domain: string; enrichType: string; label: string; desc: string }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleEnrich = async () => {
+    if (loading) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, enrichType }),
+      });
+      const data = await res.json();
+      if (data.error) { setResult(data.error); }
+      else if (data.enrichedData) {
+        const fields = Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]);
+        setResult(fields.length > 0 ? `Found: ${fields.join(', ')}` : 'No data found.');
+      } else { setResult('No data found.'); }
+    } catch { setResult('Failed.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <button onClick={handleEnrich} disabled={loading} style={{
+        width: '100%', padding: '7px 6px', border: '1px solid var(--bd)', borderRadius: 5,
+        background: 'var(--bg3)', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.5 : 1,
+        textAlign: 'left',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx)' }}>{loading ? '⟳...' : label}</div>
+        <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
+      </button>
+      {result && <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, textAlign: 'center' }}>{result}</div>}
     </div>
   );
 }

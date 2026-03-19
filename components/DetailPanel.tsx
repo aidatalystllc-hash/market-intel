@@ -261,6 +261,33 @@ export default function DetailPanel({
         </button>
       </div>
 
+      {/* ── Scope Banner: COMPANY-WIDE ── */}
+      <div style={{
+        margin: '0 14px 8px',
+        padding: '6px 12px',
+        background: 'linear-gradient(135deg, rgba(26,79,150,0.06), rgba(26,79,150,0.02))',
+        border: '1px solid rgba(26,79,150,0.15)',
+        borderRadius: 6,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+      }}>
+        <span style={{ fontSize: 13 }}>🏢</span>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 9,
+          fontWeight: 600,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: '#1a4f96',
+        }}>
+          Company-Wide Profile
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--tx3)', marginLeft: 'auto' }}>
+          All locations &middot; {company.locationCount || 1} total
+        </span>
+      </div>
+
       {/* ── Content wrapper ── */}
       <div style={{ padding: '6px 20px 28px' }}>
         {/* ── Header: logo + name + domain ── */}
@@ -759,8 +786,11 @@ export default function DetailPanel({
               />
             )}
             {/* Enrich options */}
-            <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              Enrich from website
+            <div style={{ fontSize: 10, color: '#1a4f96', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>
+              🏢 Enrich Company-Wide Data
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
+              Scrapes {company.domain} for data about the entire company — not a specific location.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               {([
@@ -823,7 +853,7 @@ export default function DetailPanel({
 
         {/* Enriched Data — shown inline after enrichment */}
         {enrichedData && Object.keys(enrichedData).filter(k => !k.startsWith('_')).length > 0 && (
-          <Section title="Enriched from Website">
+          <Section title="🏢 Enriched — Company-Wide">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <EnrichedFields data={enrichedData} />
               <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>
