@@ -35,6 +35,8 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
   const [heatMode, setHeatMode] = useState(false);
   const heatLayerRef = useRef<L.LayerGroup | null>(null);
   const initDone = useRef(false);
+  const hasFitBounds = useRef(false);
+  const prevCompaniesLen = useRef(0);
 
   // Initialize Leaflet map
   useEffect(() => {
@@ -161,9 +163,10 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
         }
       }
 
-      // Fit bounds to data
-      if (sorted.length > 0) {
-        // Use percentile bounds to exclude outliers
+      // Fit bounds only on first load or when companies list changes (filter applied)
+      // NOT when selection changes (clicking a competitor should not reset the view)
+      const companiesChanged = sorted.length !== prevCompaniesLen.current;
+      if (sorted.length > 0 && (!hasFitBounds.current || companiesChanged)) {
         const lats = sorted.map((c) => c.lat!).sort((a, b) => a - b);
         const lngs = sorted.map((c) => c.lng!).sort((a, b) => a - b);
         const p1 = Math.floor(lats.length * 0.01);
@@ -172,6 +175,16 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
           [[lats[p1], lngs[p1]], [lats[p99], lngs[p99]]],
           { padding: [50, 50], maxZoom: 12 }
         );
+        hasFitBounds.current = true;
+        prevCompaniesLen.current = sorted.length;
+      }
+
+      // Pan to selected company (smooth, without resetting zoom)
+      if (selectedId) {
+        const sel = sorted.find((c) => c.id === selectedId);
+        if (sel && sel.lat !== null && sel.lng !== null) {
+          map.panTo([sel.lat, sel.lng], { animate: true, duration: 0.5 });
+        }
       }
     } else {
       // Location View: one dot per individual location
@@ -219,8 +232,9 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
         markersRef.current.push(marker);
       }
 
-      // Fit bounds
-      if (locs.length > 0) {
+      // Fit bounds only on first load or when data changes
+      const locsChanged = locs.length !== prevCompaniesLen.current;
+      if (locs.length > 0 && (!hasFitBounds.current || locsChanged)) {
         const lats = locs.map((l) => l.loc.lat).sort((a, b) => a - b);
         const lngs = locs.map((l) => l.loc.lng).sort((a, b) => a - b);
         const p1 = Math.floor(lats.length * 0.01);
@@ -229,6 +243,8 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
           [[lats[p1], lngs[p1]], [lats[p99], lngs[p99]]],
           { padding: [50, 50], maxZoom: 14 }
         );
+        hasFitBounds.current = true;
+        prevCompaniesLen.current = locs.length;
       }
     }
   }, [companies, mapViewMode, selectedId, onHover, onClick, onLocationClick, getAllLocations]);
@@ -290,7 +306,7 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
       {/* View Mode Toggle */}
       <div className="absolute top-3 left-3 z-[1000] flex gap-1">
         <button
-          onClick={() => setMapViewMode('company')}
+          onClick={() => { setMapViewMode('company'); hasFitBounds.current = false; }}
           className={`px-3 py-1.5 rounded text-xs font-semibold border transition-all shadow-card ${
             mapViewMode === 'company'
               ? 'bg-[var(--tx)] text-white border-[var(--tx)]'
@@ -300,7 +316,7 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
           Company View
         </button>
         <button
-          onClick={() => setMapViewMode('location')}
+          onClick={() => { setMapViewMode('location'); hasFitBounds.current = false; }}
           className={`px-3 py-1.5 rounded text-xs font-semibold border transition-all shadow-card ${
             mapViewMode === 'location'
               ? 'bg-[var(--tx)] text-white border-[var(--tx)]'
