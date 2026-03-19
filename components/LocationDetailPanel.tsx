@@ -93,6 +93,7 @@ interface LocationDetailPanelProps {
   allCompanies: Company[];
   onClose: () => void;
   onViewCompany: (company: Company) => void;
+  datasetId?: string | null;
 }
 
 const DISTANCE_FILTERS = [
@@ -110,6 +111,7 @@ export default function LocationDetailPanel({
   allCompanies,
   onClose,
   onViewCompany,
+  datasetId,
 }: LocationDetailPanelProps) {
   const { location, parentCompany } = data;
   const [distFilter, setDistFilter] = useState(25);
@@ -586,7 +588,7 @@ export default function LocationDetailPanel({
           <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
             Scrapes this specific location&apos;s page for hours, local services, pricing, and amenities — not the whole company.
           </div>
-          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} />
+          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} datasetId={datasetId} />
         </Section>
 
         {/* ── Separator + Company-Wide Enrichment ── */}
@@ -606,9 +608,9 @@ export default function LocationDetailPanel({
             These enrich data about {parentCompany.name} as a whole — all locations nationwide.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="pe-news" label="🏦 PE & M&A" desc="Investors, deals" />
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" />
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" />
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="pe-news" label="🏦 PE & M&A" desc="Investors, deals" datasetId={datasetId} />
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" datasetId={datasetId} />
+            <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" datasetId={datasetId} />
           </div>
         </div>
       </div>
@@ -618,7 +620,7 @@ export default function LocationDetailPanel({
 
 /* ── Enrich Button Components ── */
 
-function LocationEnrichButton({ domain, locationName }: { domain: string; locationName: string }) {
+function LocationEnrichButton({ domain, locationName, datasetId }: { domain: string; locationName: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
@@ -631,7 +633,7 @@ function LocationEnrichButton({ domain, locationName }: { domain: string; locati
       const res = await fetch('/api/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, enrichType: 'location-detail' }),
+        body: JSON.stringify({ domain, enrichType: 'location-detail', datasetId }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }
@@ -681,7 +683,7 @@ function LocationEnrichButton({ domain, locationName }: { domain: string; locati
   );
 }
 
-function CompanyEnrichButton({ domain, enrichType, label, desc }: { domain: string; enrichType: string; label: string; desc: string }) {
+function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { domain: string; enrichType: string; label: string; desc: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
@@ -693,7 +695,7 @@ function CompanyEnrichButton({ domain, enrichType, label, desc }: { domain: stri
       const res = await fetch('/api/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, enrichType }),
+        body: JSON.stringify({ domain, enrichType, datasetId }),
       });
       const data = await res.json();
       if (data.error) { setResult(data.error); }

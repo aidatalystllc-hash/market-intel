@@ -538,6 +538,7 @@ function DashboardPage() {
           allCompanies={companies}
           onClose={() => setLocationDetail(null)}
           onViewCompany={handleSelect}
+          datasetId={datasetId}
         />
       )}
 

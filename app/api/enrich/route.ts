@@ -152,30 +152,43 @@ export async function POST(req: NextRequest) {
     let claudeOutputTokens = 0;
 
     if (anthropicKey && anthropicKey !== 'your_key_here') {
-      try {
-        const Anthropic = (await import('@anthropic-ai/sdk')).default;
-        const client = new Anthropic({ apiKey: anthropicKey });
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: anthropicKey });
 
-        const response = await client.messages.create({
-          model: 'claude-3-haiku-20240307',
-          max_tokens: 1500,
-          messages: [{
-            role: 'user',
-            content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
-          }],
-        });
+      // Try up to 2 times with a delay for rate limiting
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await client.messages.create({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 1500,
+            messages: [{
+              role: 'user',
+              content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
+            }],
+          });
 
-        // Track actual token usage from response
-        claudeInputTokens = response.usage?.input_tokens ?? 0;
-        claudeOutputTokens = response.usage?.output_tokens ?? 0;
+          claudeInputTokens = response.usage?.input_tokens ?? 0;
+          claudeOutputTokens = response.usage?.output_tokens ?? 0;
 
-        const text = response.content[0].type === 'text' ? response.content[0].text : '';
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          enrichedData = JSON.parse(jsonMatch[0]);
+          const text = response.content[0].type === 'text' ? response.content[0].text : '';
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            enrichedData = JSON.parse(jsonMatch[0]);
+          }
+          break; // Success — exit retry loop
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`Claude attempt ${attempt + 1} failed:`, errMsg);
+
+          // If rate limited, wait and retry
+          if (errMsg.includes('rate') || errMsg.includes('429') || errMsg.includes('overloaded')) {
+            if (attempt === 0) {
+              await new Promise((r) => setTimeout(r, 3000)); // Wait 3 seconds
+              continue;
+            }
+          }
+          break; // Non-rate-limit error, don't retry
         }
-      } catch (err) {
-        console.error('Claude extraction failed:', err);
       }
     }
 
