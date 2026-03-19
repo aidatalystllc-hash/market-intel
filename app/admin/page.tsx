@@ -345,33 +345,76 @@ export default function AdminPage() {
       });
 
       // Save to server (Vercel Blob) with unique dataset ID for sharing
-      // Strip heavy data to fit within reasonable size limits
       let datasetId = '';
       try {
-        const lightCompanies = companies.map((c: Record<string, unknown>) => ({
-          ...c,
-          locations: Array.isArray(c.locations) ? (c.locations as unknown[]).slice(0, 30) : [],
-          description: typeof c.description === 'string' ? c.description.slice(0, 300) : '',
-        }));
+        // Aggressively strip data to minimize payload size
+        const lightCompanies = companies.map((c: Record<string, unknown>) => {
+          // Only keep essential fields for the shared map
+          return {
+            id: c.id,
+            name: c.name,
+            domain: c.domain,
+            lat: c.lat,
+            lng: c.lng,
+            city: c.city,
+            state: c.state,
+            employees: c.employees,
+            employeeSize: c.employeeSize,
+            revenue: c.revenue,
+            founded: c.founded,
+            footprint: c.footprint,
+            isPE: c.isPE,
+            peFirm: c.peFirm,
+            peType: c.peType,
+            isFamily: c.isFamily,
+            services: c.services,
+            score: c.score,
+            locationCount: c.locationCount,
+            avgRating: c.avgRating,
+            totalReviews: c.totalReviews,
+            totalPhotos: c.totalPhotos,
+            linkedinUrl: c.linkedinUrl,
+            executiveName: c.executiveName,
+            executiveTitle: c.executiveTitle,
+            executiveEmail: c.executiveEmail,
+            executivePhone: c.executivePhone,
+            parentCompany: c.parentCompany,
+            maScore: c.maScore,
+            description: typeof c.description === 'string' ? c.description.slice(0, 200) : '',
+            locations: Array.isArray(c.locations) ? (c.locations as unknown[]).slice(0, 15) : [],
+          };
+        });
+
+        const bodyStr = JSON.stringify({
+          companies: lightCompanies,
+          industryName: industryName || 'Market',
+          warnings,
+        });
+
+        console.log(`Saving dataset: ${lightCompanies.length} companies, ${(bodyStr.length / 1024 / 1024).toFixed(1)}MB`);
 
         const saveRes = await fetch('/api/save-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            companies: lightCompanies,
-            industryName: industryName || 'Market',
-            warnings,
-          }),
+          body: bodyStr,
         });
-        const saveData = await saveRes.json();
-        if (saveData.datasetId) {
-          datasetId = saveData.datasetId;
-          console.log('Dataset saved! Share link: /?d=' + datasetId);
-        } else if (saveData.error) {
-          console.warn('Save failed:', saveData.error);
+
+        if (!saveRes.ok) {
+          const errText = await saveRes.text();
+          console.error('Save HTTP error:', saveRes.status, errText);
+          alert(`Share link failed (HTTP ${saveRes.status}): ${errText.slice(0, 200)}`);
+        } else {
+          const saveData = await saveRes.json();
+          if (saveData.datasetId) {
+            datasetId = saveData.datasetId;
+          } else if (saveData.error) {
+            console.error('Save error:', saveData.error);
+            alert(`Share link failed: ${saveData.error}`);
+          }
         }
       } catch (e) {
-        console.warn('Could not save to server:', e);
+        console.error('Save exception:', e);
+        alert(`Share link failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
       }
 
       // Navigate to the map with the dataset ID in the URL
