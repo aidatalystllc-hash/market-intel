@@ -138,17 +138,30 @@ export default function DashboardPage() {
     }
   }, [hasData]);
 
-  // Load data from IndexedDB (with sessionStorage fallback)
+  // Load data: try local first, then fetch from server (for shared links)
   useEffect(() => {
     (async () => {
       try {
-        // Try IndexedDB first
+        // Try IndexedDB first (admin just uploaded)
         let data = await loadData() as Record<string, unknown> | null;
 
-        // Fallback to sessionStorage for backwards compatibility
+        // Fallback to sessionStorage
         if (!data) {
           const raw = sessionStorage.getItem('marketintel_data');
           if (raw) data = JSON.parse(raw);
+        }
+
+        // Fallback to server (Vercel Blob) — this is how shared links work
+        if (!data) {
+          try {
+            const res = await fetch('/api/load-data');
+            const serverData = await res.json();
+            if (serverData.data && serverData.data.companies) {
+              data = serverData.data;
+            }
+          } catch {
+            // Server not available — that's OK
+          }
         }
 
         if (!data) {
@@ -161,8 +174,8 @@ export default function DashboardPage() {
         setIndustryName((data.industryName as string) || 'Market');
         if (data.colorTheme) setColorTheme(data.colorTheme as ColorTheme);
         if (data.warnings) setWarnings(data.warnings as string[]);
-        // Only show tour on first visit — not on every refresh
-        if (data.showTour && !localStorage.getItem('marketintel_tour_seen')) {
+        // Show tour on first visit only
+        if (!localStorage.getItem('marketintel_tour_seen')) {
           setTimeout(() => setTourOpen(true), 800);
         }
         setHasData(true);

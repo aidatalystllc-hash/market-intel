@@ -331,10 +331,11 @@ export default function AdminPage() {
     [readFilePreview]
   );
 
-  // Store processed data using IndexedDB (handles any size)
+  // Store processed data locally AND on server (for sharing via link)
   // After upload, redirect to / (the map dashboard)
   const storeAndNavigate = useCallback(
     async (companies: Record<string, unknown>[], warnings: string[]) => {
+      // Store locally (IndexedDB) for immediate use
       await storeData({
         companies,
         industryName: industryName || 'Market',
@@ -342,6 +343,23 @@ export default function AdminPage() {
         warnings,
         showTour: true,
       });
+
+      // Also save to server (Vercel Blob) so the link can be shared with clients
+      try {
+        await fetch('/api/save-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companies,
+            industryName: industryName || 'Market',
+            warnings,
+          }),
+        });
+      } catch (e) {
+        console.warn('Could not save to server (link sharing may not work):', e);
+        // Non-fatal — local storage still works
+      }
+
       router.push('/');
     },
     [industryName, colorTheme, router]
