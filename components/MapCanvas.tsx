@@ -64,14 +64,22 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       bounds.current = { minLat: 25, maxLat: 50, minLng: -125, maxLng: -65 };
       return;
     }
-    const lats = withCoords.map((c) => c.lat!);
-    const lngs = withCoords.map((c) => c.lng!);
-    const pad = 0.5; // degree padding
+    // Use loop instead of Math.min(...arr) to avoid call stack overflow with 16K+ items
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const c of withCoords) {
+      const lat = c.lat!;
+      const lng = c.lng!;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+    const pad = 0.5;
     bounds.current = {
-      minLat: Math.min(...lats) - pad,
-      maxLat: Math.max(...lats) + pad,
-      minLng: Math.min(...lngs) - pad,
-      maxLng: Math.max(...lngs) + pad,
+      minLat: minLat - pad,
+      maxLat: maxLat + pad,
+      minLng: minLng - pad,
+      maxLng: maxLng + pad,
     };
   }, [companies]);
 
