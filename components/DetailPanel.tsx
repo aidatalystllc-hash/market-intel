@@ -764,10 +764,10 @@ export default function DetailPanel({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               {([
-                { key: 'contacts', label: '📞 Contacts', desc: 'Phone, email, social' },
-                { key: 'services', label: '🏷️ Services', desc: 'Offerings & pricing' },
-                { key: 'overview', label: '🏢 Overview', desc: 'About & leadership' },
-                { key: 'reviews', label: '⭐ Sentiment', desc: 'Customer feedback' },
+                { key: 'pe-news', label: '🏦 PE & M&A', desc: 'Investors, acquisitions' },
+                { key: 'recent-news', label: '📰 News', desc: 'Growth, openings, press' },
+                { key: 'services-pricing', label: '💰 Pricing', desc: 'Services & pricing' },
+                { key: 'location-detail', label: '📍 Location', desc: 'Hours, staff, amenities' },
               ] as const).map((opt) => (
                 <button
                   key={opt.key}
@@ -985,6 +985,143 @@ function EnrichedFields({ data }: { data: Record<string, unknown> }) {
   // Hours
   if (data.hours) items.push(
     <div key="hours"><EnrichedLabel>Hours</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.hours).slice(0, 200)}</div></div>
+  );
+
+  // PE & M&A Intel
+  if (data.pe_backed !== undefined) {
+    items.push(
+      <div key="pe-status" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: data.pe_backed ? '#7a1050' : '#1a7040' }}>
+          {data.pe_backed ? '● PE-Backed' : '● Not PE-Backed'}
+        </span>
+        {!!data.pe_firm && <span style={{ fontSize: 11, color: 'var(--tx2)' }}>({String(data.pe_firm)})</span>}
+      </div>
+    );
+  }
+  if (data.investors && Array.isArray(data.investors) && data.investors.length > 0) {
+    items.push(
+      <div key="investors"><EnrichedLabel>Investors</EnrichedLabel>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {(data.investors as string[]).map((inv, i) => (
+            <span key={i} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, background: 'rgba(122,16,80,.08)', color: '#7a1050', border: '1px solid rgba(122,16,80,.2)', fontFamily: "'JetBrains Mono', monospace" }}>{inv}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (data.acquisitions && Array.isArray(data.acquisitions) && data.acquisitions.length > 0) {
+    items.push(
+      <div key="acquisitions"><EnrichedLabel>Acquisitions</EnrichedLabel>
+        {(data.acquisitions as { company?: string; date?: string; details?: string }[]).slice(0, 5).map((a, i) => (
+          <div key={i} style={{ fontSize: 11, color: 'var(--tx2)', marginBottom: 3, paddingLeft: 8, borderLeft: '2px solid #7a1050' }}>
+            <strong style={{ color: 'var(--tx)' }}>{a.company}</strong> {a.date && <span style={{ color: 'var(--tx3)' }}>({a.date})</span>}
+            {a.details && <div style={{ fontSize: 10, color: 'var(--tx3)' }}>{a.details}</div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (data.funding) items.push(
+    <div key="funding"><EnrichedLabel>Funding</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.funding)}</div></div>
+  );
+  if (data.ownership_notes) items.push(
+    <div key="ownership"><EnrichedLabel>Ownership Notes</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(data.ownership_notes)}</div></div>
+  );
+
+  // Recent News
+  if (data.recent_news && Array.isArray(data.recent_news) && data.recent_news.length > 0) {
+    items.push(
+      <div key="news"><EnrichedLabel>Recent News</EnrichedLabel>
+        {(data.recent_news as { headline?: string; date?: string; summary?: string }[]).slice(0, 5).map((n, i) => (
+          <div key={i} style={{ fontSize: 11, marginBottom: 6, paddingLeft: 8, borderLeft: '2px solid var(--acc)' }}>
+            <div style={{ fontWeight: 600, color: 'var(--tx)' }}>{n.headline}</div>
+            {n.date && <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{n.date}</div>}
+            {n.summary && <div style={{ color: 'var(--tx2)', lineHeight: 1.4 }}>{n.summary}</div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (data.new_locations) items.push(
+    <div key="new-locs"><EnrichedLabel>New Locations / Expansion</EnrichedLabel><div style={{ fontSize: 11, color: '#1a7040', lineHeight: 1.5 }}>{String(data.new_locations)}</div></div>
+  );
+  if (data.partnerships) items.push(
+    <div key="partnerships"><EnrichedLabel>Partnerships</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.partnerships)}</div></div>
+  );
+  if (data.awards) items.push(
+    <div key="awards"><EnrichedLabel>Awards & Recognition</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--acc)' }}>{String(data.awards)}</div></div>
+  );
+  if (data.growth_signals) items.push(
+    <div key="growth"><EnrichedLabel>Growth Signals</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(data.growth_signals)}</div></div>
+  );
+
+  // Location-specific
+  if (data.services_at_location) {
+    const svcs = Array.isArray(data.services_at_location) ? data.services_at_location : [String(data.services_at_location)];
+    items.push(
+      <div key="loc-svcs"><EnrichedLabel>Services at This Location</EnrichedLabel>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {svcs.filter((s: string) => String(s).trim().length > 1).slice(0, 12).map((s: string, i: number) => (
+            <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(26,112,64,.08)', color: '#1a7040', border: '1px solid rgba(26,112,64,.2)', fontFamily: "'JetBrains Mono', monospace" }}>{String(s).trim()}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (data.local_pricing) items.push(
+    <div key="loc-price"><EnrichedLabel>Location Pricing</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.local_pricing)}</div></div>
+  );
+  if (data.staff && Array.isArray(data.staff) && data.staff.length > 0) {
+    items.push(
+      <div key="staff"><EnrichedLabel>Staff</EnrichedLabel>
+        {(data.staff as { name?: string; role?: string }[]).slice(0, 5).map((s, i) => (
+          <div key={i} style={{ fontSize: 11, marginBottom: 1 }}><strong style={{ color: 'var(--tx)' }}>{s.name}</strong> <span style={{ color: 'var(--tx2)' }}>— {s.role}</span></div>
+        ))}
+      </div>
+    );
+  }
+  if (data.amenities && Array.isArray(data.amenities)) {
+    items.push(
+      <div key="amenities"><EnrichedLabel>Amenities</EnrichedLabel>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {(data.amenities as string[]).slice(0, 10).map((a, i) => (
+            <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--tx2)', border: '1px solid var(--bd)' }}>{a}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (data.membership_options && Array.isArray(data.membership_options) && data.membership_options.length > 0) {
+    items.push(
+      <div key="memberships"><EnrichedLabel>Membership Plans</EnrichedLabel>
+        {(data.membership_options as { name?: string; price?: string; benefits?: string }[]).slice(0, 5).map((m, i) => (
+          <div key={i} style={{ fontSize: 11, color: 'var(--tx2)', marginBottom: 4, padding: '4px 8px', background: 'var(--bg3)', borderRadius: 4, border: '1px solid var(--bd)' }}>
+            <div><strong style={{ color: 'var(--tx)' }}>{m.name}</strong> {m.price && <span style={{ color: ACCENT_COLOR, fontWeight: 600 }}>{m.price}</span>}</div>
+            {m.benefits && <div style={{ fontSize: 10, color: 'var(--tx3)' }}>{m.benefits}</div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (data.specials) items.push(
+    <div key="specials"><EnrichedLabel>Current Specials</EnrichedLabel><div style={{ fontSize: 11, color: ACCENT_COLOR, fontWeight: 500 }}>{String(data.specials)}</div></div>
+  );
+  if (data.booking_link) items.push(
+    <div key="booking"><a href={String(data.booking_link)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: ACCENT_COLOR, fontWeight: 500, textDecoration: 'none' }}>Book Appointment ↗</a></div>
+  );
+
+  // Membership options from services-pricing
+  if (data.local_phone) items.push(
+    <div key="loc-phone" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 14 }}>📞</span>
+      <a href={`tel:${String(data.local_phone).replace(/[^\d+]/g, '')}`} style={{ fontSize: 12, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500 }}>{String(data.local_phone)}</a>
+    </div>
+  );
+  if (data.local_address) items.push(
+    <div key="loc-addr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 14 }}>📍</span>
+      <span style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.local_address)}</span>
+    </div>
   );
 
   // Note (fallback mode)

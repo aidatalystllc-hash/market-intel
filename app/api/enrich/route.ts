@@ -2,46 +2,52 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 30;
 
-// Enrichment types that a PE executive would actually find valuable
+// Enrichment types focused on data NOT already in the uploaded files
 const ENRICH_TYPES = {
-  contacts: {
-    label: 'Contact Info',
-    pages: ['', '/contact', '/about', '/contact-us', '/about-us'],
-    prompt: `Extract ALL contact information from this webpage. Return ONLY valid JSON with these fields (include only what you find):
-- phone: main business phone number
-- email: main business email
-- address: full business address
-- social: object with linkedin, facebook, instagram, twitter URLs
-Be thorough — check headers, footers, and sidebar content.`,
+  'pe-news': {
+    label: 'PE & Acquisition Intel',
+    pages: ['', '/news', '/press', '/about', '/about-us'],
+    prompt: `You are an M&A research analyst. Extract any information about private equity ownership, acquisitions, mergers, investments, or ownership changes from this webpage. Return ONLY valid JSON:
+- pe_backed: true/false based on any PE/investor mentions
+- pe_firm: name of PE firm if mentioned
+- acquisitions: array of {company, date, details} for any acquisitions mentioned
+- investors: array of investor/firm names mentioned
+- funding: any funding rounds or investment amounts mentioned
+- ownership_notes: any other relevant ownership information (1-2 sentences)
+If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes": "No PE or acquisition information found on this page."}`,
   },
-  services: {
+  'recent-news': {
+    label: 'Recent News & Growth',
+    pages: ['', '/news', '/press', '/blog', '/press-releases'],
+    prompt: `Extract recent news, announcements, and growth signals from this company's webpage. Return ONLY valid JSON:
+- recent_news: array of {headline, date, summary} for any news items (max 5)
+- new_locations: any mentions of new location openings, expansions, or new markets
+- partnerships: any new partnerships or collaborations mentioned
+- awards: any recent awards or recognitions
+- growth_signals: 1-2 sentences summarizing growth trajectory based on what you see`,
+  },
+  'services-pricing': {
     label: 'Services & Pricing',
-    pages: ['', '/services', '/pricing', '/our-services', '/what-we-do'],
-    prompt: `Extract the company's services and any pricing information. Return ONLY valid JSON:
-- services: array of service names offered (e.g., ["Spray Tanning", "UV Beds", "Red Light Therapy"])
-- pricing: array of objects with {service, price, details} for any pricing found
-- specialties: what they specialize in or are known for (1-2 sentences)`,
+    pages: ['/services', '/pricing', '/our-services', '/what-we-do', '/membership', '/memberships', '/specials', ''],
+    prompt: `Extract detailed service offerings and pricing from this business webpage. Return ONLY valid JSON:
+- services: array of service names offered
+- pricing: array of {service, price, details} for any pricing found (memberships, packages, etc.)
+- membership_options: array of {name, price, benefits} if membership/subscription plans exist
+- specials: any current promotions or special offers
+- differentiators: what makes their services unique (1 sentence)`,
   },
-  overview: {
-    label: 'Company Overview',
-    pages: ['', '/about', '/about-us', '/our-story'],
-    prompt: `Extract a professional company overview suitable for an M&A intelligence report. Return ONLY valid JSON:
-- description: 2-3 sentence company description (professional tone, factual)
-- founded: year founded if mentioned
-- leadership: array of {name, title} for any leadership team members mentioned
-- locations_mentioned: number of locations or cities mentioned
-- differentiators: what makes this company unique (1-2 sentences)
-- certifications: any certifications, awards, or memberships mentioned`,
-  },
-  reviews: {
-    label: 'Customer Sentiment',
-    pages: ['', '/reviews', '/testimonials'],
-    prompt: `Extract customer review/testimonial information. Return ONLY valid JSON:
-- sentiment: "positive", "mixed", or "negative" based on overall tone
-- highlights: array of 3-5 short positive themes customers mention
-- concerns: array of any negative themes or complaints if visible
-- testimonial_count: approximate number of testimonials shown
-- sample_quotes: array of 2-3 short representative customer quotes`,
+  'location-detail': {
+    label: 'This Location',
+    pages: [], // URL provided directly
+    prompt: `Extract location-specific details from this business location page. Return ONLY valid JSON:
+- hours: business hours (formatted nicely)
+- services_at_location: array of services available at THIS specific location
+- local_phone: phone number for this location
+- local_address: full address
+- local_pricing: any location-specific pricing
+- staff: array of {name, role} for any staff members listed
+- amenities: array of amenities or features at this location
+- booking_link: URL for booking/scheduling if found`,
   },
 } as const;
 
@@ -50,11 +56,10 @@ type EnrichType = keyof typeof ENRICH_TYPES;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { domain, enrichType = 'overview' } = body as {
-      url?: string;
-      type?: string;
+    const { domain, enrichType = 'services-pricing', locationUrl } = body as {
       domain: string;
       enrichType?: EnrichType;
+      locationUrl?: string; // For location-specific enrichment
     };
 
     const firecrawlKey = process.env.FIRECRAWL_API_KEY;
@@ -69,14 +74,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No domain provided.', enrichedData: null }, { status: 400 });
     }
 
-    const config = ENRICH_TYPES[enrichType] || ENRICH_TYPES.overview;
+    const config = ENRICH_TYPES[enrichType] || ENRICH_TYPES['services-pricing'];
 
-    // Try scraping multiple relevant pages — use the first one that returns content
+    // Determine which URLs to scrape
+    let pagesToTry: string[];
+    if (enrichType === 'location-detail' && locationUrl) {
+      // For location-specific enrichment, try the provided URL directly
+      pagesToTry = [locationUrl];
+    } else {
+      pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+    }
+
+    // Try scraping pages — use the first one that returns substantial content
     let markdown = '';
     let scrapedUrl = '';
 
-    for (const path of config.pages) {
-      const targetUrl = `https://${domain}${path}`;
+    for (const targetUrl of pagesToTry) {
       try {
         const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
@@ -90,14 +103,14 @@ export async function POST(req: NextRequest) {
         if (scrapeRes.ok) {
           const data = await scrapeRes.json();
           const content = data?.data?.markdown || '';
-          if (content.length > 200) { // Only use if substantial content found
+          if (content.length > 200) {
             markdown = content;
             scrapedUrl = targetUrl;
             break;
           }
         }
       } catch {
-        continue; // Try next page
+        continue;
       }
     }
 
@@ -119,10 +132,10 @@ export async function POST(req: NextRequest) {
 
         const response = await client.messages.create({
           model: 'claude-3-haiku-20240307',
-          max_tokens: 1024,
+          max_tokens: 1500,
           messages: [{
             role: 'user',
-            content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 4000)}`,
+            content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
           }],
         });
 
@@ -136,7 +149,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback: basic extraction without Claude
+    // Fallback without Claude
     if (Object.keys(enrichedData).length === 0) {
       const cleaned = markdown
         .replace(/https?:\/\/[^\s)]+/g, '')
