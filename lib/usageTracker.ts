@@ -67,9 +67,9 @@ export async function loadUsage(datasetId: string): Promise<UsageData> {
     const { blobs } = await list({ prefix: `usage/${datasetId}` });
     if (blobs.length === 0) return defaultData;
 
-    const res = await fetch(blobs[0].url);
+    const downloadUrl = blobs[0].downloadUrl || blobs[0].url;
+    const res = await fetch(downloadUrl);
     if (!res.ok) return defaultData;
-
     const data = await res.json() as UsageData;
     data.capUsd = cap; // Always use current cap from env
     return data;
@@ -123,7 +123,7 @@ export async function recordUsage(
   // Save back to Vercel Blob
   try {
     await put(`usage/${datasetId}.json`, JSON.stringify(usage), {
-      access: 'public',
+      access: 'private',
       contentType: 'application/json',
       addRandomSuffix: false,
     });

@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No companies data provided.' }, { status: 400 });
     }
 
-    // Generate a unique dataset ID: industry slug + short random string
+    // Generate a unique dataset ID
     const slug = (industryName || 'market')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -25,14 +25,12 @@ export async function POST(req: NextRequest) {
     const rand = Math.random().toString(36).slice(2, 8);
     const datasetId = `${slug}-${rand}`;
 
-    // Further strip data if needed to stay under Blob limits
+    // Strip heavy data to keep payload small
     const stripped = companies.map((c: Record<string, unknown>) => {
       const copy = { ...c };
-      // Cap locations to 20 per company
       if (Array.isArray(copy.locations)) {
         copy.locations = (copy.locations as unknown[]).slice(0, 20);
       }
-      // Cap description
       if (typeof copy.description === 'string' && copy.description.length > 300) {
         copy.description = copy.description.slice(0, 300);
       }
@@ -50,9 +48,9 @@ export async function POST(req: NextRequest) {
     const sizeMB = payload.length / (1024 * 1024);
     console.log(`Saving dataset ${datasetId}: ${stripped.length} companies, ${sizeMB.toFixed(1)}MB`);
 
-    // Save to Vercel Blob with unique filename
+    // Save to Vercel Blob (private store)
     const blob = await put(`datasets/${datasetId}.json`, payload, {
-      access: 'public',
+      access: 'private',
       contentType: 'application/json',
       addRandomSuffix: false,
     });
@@ -62,7 +60,6 @@ export async function POST(req: NextRequest) {
       datasetId,
       url: blob.url,
       shareLink: `/?d=${datasetId}`,
-      size: payload.length,
       sizeMB: sizeMB.toFixed(1),
       companiesCount: stripped.length,
     });

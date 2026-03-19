@@ -5,23 +5,24 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Load a specific dataset by ID, or the latest dataset if no ID provided.
- * Public endpoint — anyone with the link can view the map.
+ * Server-side endpoint — reads from Vercel Blob store using downloadUrl for private blobs.
  */
 export async function GET(req: NextRequest) {
   try {
     const datasetId = req.nextUrl.searchParams.get('d');
 
     if (datasetId) {
-      // Load a specific dataset by ID
       const { blobs } = await list({ prefix: `datasets/${datasetId}` });
 
       if (blobs.length === 0) {
         return NextResponse.json({ data: null, message: `Dataset "${datasetId}" not found.` });
       }
 
-      const res = await fetch(blobs[0].url);
+      // For private stores, downloadUrl includes the auth token
+      const downloadUrl = blobs[0].downloadUrl || blobs[0].url;
+      const res = await fetch(downloadUrl);
       if (!res.ok) {
-        return NextResponse.json({ data: null, message: 'Could not load dataset.' });
+        return NextResponse.json({ data: null, message: `Could not load dataset (HTTP ${res.status}).` });
       }
 
       const data = await res.json();
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
       new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
     )[0];
 
-    const res = await fetch(latest.url);
+    const downloadUrl = latest.downloadUrl || latest.url;
+    const res = await fetch(downloadUrl);
     if (!res.ok) {
       return NextResponse.json({ data: null, message: 'Could not load data.' });
     }
