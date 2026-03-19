@@ -14,9 +14,23 @@ import CompanyTable from '@/components/CompanyTable';
 import GuidedTour from '@/components/GuidedTour';
 import { loadData } from '@/lib/storage';
 
-// Dynamic imports for heavy components
-const MapCanvas = dynamic(() => import('@/components/MapCanvas'), { ssr: false });
-const StrategyChart = dynamic(() => import('@/components/StrategyChart'), { ssr: false });
+// Dynamic imports — ssr:false required for canvas/chart
+const MapCanvas = dynamic(() => import('@/components/MapCanvas'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#edeae2' }}>
+      <span style={{ color: '#9e9488', fontSize: 13 }}>Loading map...</span>
+    </div>
+  ),
+});
+const StrategyChart = dynamic(() => import('@/components/StrategyChart'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+      <span style={{ color: '#9e9488', fontSize: 13 }}>Loading chart...</span>
+    </div>
+  ),
+});
 
 function applyFilters(companies: Company[], filters: FilterState): Company[] {
   return companies.filter((c) => {
@@ -285,7 +299,7 @@ export default function MapPage() {
       )}
 
       {/* ── MAIN AREA ── */}
-      <div className="flex-1 relative overflow-hidden min-h-0">
+      <div className="flex-1 relative overflow-hidden" style={{ minHeight: 300 }}>
         {/* Geographic View */}
         <div
           className={`absolute inset-0 flex flex-col ${currentView === 'map' ? '' : 'hidden'}`}

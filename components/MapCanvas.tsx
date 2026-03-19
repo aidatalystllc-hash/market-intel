@@ -160,17 +160,70 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const cW = canvas.width;
-    const cH = canvas.height;
+    let cW = canvas.width;
+    let cH = canvas.height;
 
-    // Skip drawing if canvas has no size yet
-    if (cW === 0 || cH === 0) return;
+    // If canvas has no size, try to get it from the container
+    if (cW === 0 || cH === 0) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+          cW = rect.width;
+          cH = rect.height;
+        } else {
+          return; // Container truly has no size yet
+        }
+      } else {
+        return;
+      }
+    }
 
     const s = mapState.current;
     const b = bounds.current;
 
-    // Skip if bounds are invalid (NaN)
-    if (!isFinite(b.minLat) || !isFinite(b.maxLat) || !isFinite(b.minLng) || !isFinite(b.maxLng)) return;
+    // If bounds are invalid, recalculate them
+    if (!isFinite(b.minLat) || !isFinite(b.maxLat) || !isFinite(b.minLng) || !isFinite(b.maxLng)) {
+      // Try to recalculate
+      const withCoords = companies.filter((c) => c.lat !== null && c.lng !== null);
+      if (withCoords.length > 0) {
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        for (const c of withCoords) {
+          if (c.lat! < minLat) minLat = c.lat!;
+          if (c.lat! > maxLat) maxLat = c.lat!;
+          if (c.lng! < minLng) minLng = c.lng!;
+          if (c.lng! > maxLng) maxLng = c.lng!;
+        }
+        bounds.current = { minLat: minLat - 0.5, maxLat: maxLat + 0.5, minLng: minLng - 0.5, maxLng: maxLng + 0.5 };
+      } else {
+        // Show debug info on canvas
+        ctx.fillStyle = '#edeae2';
+        ctx.fillRect(0, 0, cW, cH);
+        ctx.fillStyle = '#1c1814';
+        ctx.font = '14px Syne, sans-serif';
+        ctx.fillText(`${companies.length} companies loaded, 0 have coordinates`, 20, 30);
+        return;
+      }
+    }
+
+    // If scale is 0 or NaN, recalculate fitToData
+    if (!isFinite(s.scale) || s.scale === 0) {
+      const latRange = b.maxLat - b.minLat;
+      const lngRange = b.maxLng - b.minLng;
+      if (latRange > 0 && lngRange > 0) {
+        const scaleX = (cW * 0.84) / lngRange;
+        const scaleY = (cH * 0.84) / (latRange * 0.85);
+        s.scale = Math.min(scaleX, scaleY) / 100;
+        const centerLat = (b.minLat + b.maxLat) / 2;
+        const centerLng = (b.minLng + b.maxLng) / 2;
+        const cx = (centerLng - b.minLng) * 100 * s.scale;
+        const cy = (b.maxLat - centerLat) * 100 * s.scale * 0.85;
+        s.offsetX = cW / 2 - cx;
+        s.offsetY = cH / 2 - cy;
+      }
+    }
 
     ctx.clearRect(0, 0, cW, cH);
     ctx.fillStyle = '#edeae2';
@@ -352,6 +405,13 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
         ctx.fillText(label, x, y + r + 12);
       }
     }
+
+    // Debug info (temporary) — shows in bottom-left corner
+    ctx.save();
+    ctx.font = '11px monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillText(`${sorted.length} dots | canvas: ${cW}x${cH} | scale: ${s.scale.toFixed(4)} | bounds: ${b.minLat.toFixed(1)},${b.minLng.toFixed(1)} → ${b.maxLat.toFixed(1)},${b.maxLng.toFixed(1)}`, 10, cH - 10);
+    ctx.restore();
   }, [companies, heatMode, proj, getRelevantStates, selectedId]);
 
   // Heatmap

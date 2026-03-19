@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import type { Company } from '@/lib/types';
 
 interface CompanyTableProps {
@@ -196,15 +196,63 @@ export default function CompanyTable({
           ))}
         </div>
 
-        {/* Scrollable body */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            overflowX: 'auto',
-          }}
-        >
-          {companies.map((company) => {
+        {/* Scrollable body — virtualized for large datasets */}
+        <VirtualizedBody
+          companies={companies}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Virtualized table body — only renders visible rows
+const ROW_HEIGHT = 32;
+const OVERSCAN = 10;
+
+function VirtualizedBody({
+  companies,
+  selectedId,
+  onSelect,
+}: {
+  companies: Company[];
+  selectedId: string | null;
+  onSelect: (c: Company) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(300);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setContainerHeight(el.clientHeight);
+    const obs = new ResizeObserver((entries) => {
+      setContainerHeight(entries[0].contentRect.height);
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) setScrollTop(scrollRef.current.scrollTop);
+  }, []);
+
+  const totalHeight = companies.length * ROW_HEIGHT;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(companies.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+  const visibleCompanies = companies.slice(startIdx, endIdx);
+
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={handleScroll}
+      style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: startIdx * ROW_HEIGHT, left: 0, right: 0 }}>
+          {visibleCompanies.map((company) => {
             const isSelected = company.id === selectedId;
             const fp = FOOTPRINT_STYLES[company.footprint] || FOOTPRINT_STYLES.local;
 
@@ -249,6 +297,7 @@ export default function CompanyTable({
                     alt=""
                     width={24}
                     height={24}
+                    loading="lazy"
                     style={{
                       width: 24,
                       height: 24,
