@@ -514,18 +514,25 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recalculate bounds and redraw when companies change (new filter applied)
+  // Recalculate bounds and redraw when companies change
   const prevCompaniesRef = useRef(companies);
+  const hasInitialFit = useRef(false);
   useEffect(() => {
-    // Only recalc bounds if the company list actually changed
     if (prevCompaniesRef.current !== companies) {
+      const wasEmpty = prevCompaniesRef.current.length === 0;
       prevCompaniesRef.current = companies;
       calcBounds();
-      // Don't call fitToData — preserve user's zoom/pan
+      // Fit viewport on first real data load (from IndexedDB async load)
+      // but preserve user zoom/pan on subsequent filter changes
+      if (wasEmpty && companies.length > 0) {
+        resize();
+        fitToData();
+        hasInitialFit.current = true;
+      }
     }
     draw();
     drawMinimap();
-  }, [companies, heatMode, selectedId, draw, drawMinimap, calcBounds]);
+  }, [companies, heatMode, selectedId, draw, drawMinimap, calcBounds, resize, fitToData]);
 
   // Mouse handlers
   const handleMouseMove = useCallback(
