@@ -231,12 +231,25 @@ export function transformCompanies(
 
     const footprint = calcFootprint(locationCount, states.size, employeeSize);
 
-    // Executive name — combine Apollo first+last if available
+    // Executive data — try mapped fields first, fall back to Apollo data
     let execName = toStr(getMapped(row, companyMapping, 'executive_name'));
-    if (!execName) {
-      const first = toStr(getMapped(row, companyMapping, 'apollo_first_name'));
-      const last = toStr(getMapped(row, companyMapping, 'apollo_last_name'));
-      if (first || last) execName = [first, last].filter(Boolean).join(' ');
+    let execTitle = toStr(getMapped(row, companyMapping, 'executive_title'));
+    let execEmail = toStr(getMapped(row, companyMapping, 'executive_email'));
+    const execPhone = toStr(getMapped(row, companyMapping, 'executive_phone'));
+
+    // Fall back to Apollo contact data if primary fields are empty
+    const apolloFirst = toStr(getMapped(row, companyMapping, 'apollo_first_name'));
+    const apolloLast = toStr(getMapped(row, companyMapping, 'apollo_last_name'));
+    if (!execName && (apolloFirst || apolloLast)) {
+      execName = [apolloFirst, apolloLast].filter(Boolean).join(' ');
+    }
+    // Apollo title fallback — check the raw column directly
+    if (!execTitle) {
+      execTitle = toStr(row['Apollo contact data_title_1']);
+    }
+    // Apollo email fallback
+    if (!execEmail) {
+      execEmail = toStr(row['Apollo contact data_email_1']);
     }
 
     const company: Company = {
@@ -265,8 +278,8 @@ export function transformCompanies(
       totalPhotos,
       linkedinUrl: toStr(getMapped(row, companyMapping, 'linkedin_url')),
       executiveName: execName,
-      executiveTitle: toStr(getMapped(row, companyMapping, 'executive_title')),
-      executiveEmail: toStr(getMapped(row, companyMapping, 'executive_email')),
+      executiveTitle: execTitle,
+      executiveEmail: execEmail,
       executivePhone: toStr(getMapped(row, companyMapping, 'executive_phone')),
       parentCompany: toStr(getMapped(row, companyMapping, 'parent_company')),
       locations,
