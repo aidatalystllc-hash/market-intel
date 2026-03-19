@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
             : `Extract structured location data from this scraped page. Return ONLY valid JSON with these fields (include only what you find): hours, services, phone, address.\n\nContent:\n${markdown.slice(0, 3000)}`;
 
         const response = await client.messages.create({
-          model: 'claude-sonnet-4-6-20250514',
+          model: 'claude-sonnet-4-5-20241022',
           max_tokens: 1024,
           messages: [{ role: 'user', content: prompt }],
         });
