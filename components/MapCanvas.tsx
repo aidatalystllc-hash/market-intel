@@ -64,22 +64,27 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       bounds.current = { minLat: 25, maxLat: 50, minLng: -125, maxLng: -65 };
       return;
     }
-    // Use loop instead of Math.min(...arr) to avoid call stack overflow with 16K+ items
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+
+    // Use percentile-based bounds to exclude outliers (e.g., companies in South America)
+    // Sort lats and lngs separately and use 1st-99th percentile
+    const lats: number[] = [];
+    const lngs: number[] = [];
     for (const c of withCoords) {
-      const lat = c.lat!;
-      const lng = c.lng!;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
+      lats.push(c.lat!);
+      lngs.push(c.lng!);
     }
-    const pad = 0.5;
+    lats.sort((a, b) => a - b);
+    lngs.sort((a, b) => a - b);
+
+    // Use 1st and 99th percentile to exclude extreme outliers
+    const p1 = Math.floor(lats.length * 0.01);
+    const p99 = Math.floor(lats.length * 0.99);
+    const pad = 1;
     bounds.current = {
-      minLat: minLat - pad,
-      maxLat: maxLat + pad,
-      minLng: minLng - pad,
-      maxLng: maxLng + pad,
+      minLat: lats[p1] - pad,
+      maxLat: lats[p99] + pad,
+      minLng: lngs[p1] - pad,
+      maxLng: lngs[p99] + pad,
     };
   }, [companies]);
 
@@ -519,19 +524,33 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
     }
   }, [companies, invProj, getRelevantStates]);
 
-  // Hit test
+  // Hit test — optimized: check national/regional first (drawn on top), skip off-screen
   const hitTest = useCallback(
     (mx: number, my: number): Company | null => {
-      const sorted = [...companies]
-        .filter((c) => c.lat !== null && c.lng !== null)
-        .sort((a, b) => {
-          const order = { local: 0, regional: 1, national: 2 };
-          return order[b.footprint] - order[a.footprint];
-        });
-      for (const c of sorted) {
-        const [x, y] = proj(c.lat!, c.lng!);
-        const r = Math.min(Math.max(Math.sqrt(Math.max(c.locationCount || 1, 1)) * 4, 6), 28) + 5;
-        if ((mx - x) ** 2 + (my - y) ** 2 <= r * r) return c;
+      const isLarge = companies.length > 2000;
+      const maxDist = 35; // max click radius in pixels
+      let best: Company | null = null;
+      let bestDist = maxDist * maxDist;
+      // Prioritize national > regional > local
+      const priorityOrder = ['national', 'regional', 'local'] as const;
+      for (const fp of priorityOrder) {
+        for (const c of companies) {
+          if (c.lat === null || c.lng === null) continue;
+          if (c.footprint !== fp) continue;
+          const [x, y] = proj(c.lat, c.lng);
+          // Quick bounding box check before expensive distance calc
+          if (Math.abs(mx - x) > maxDist || Math.abs(my - y) > maxDist) continue;
+          const r = isLarge
+            ? Math.min(Math.max(Math.sqrt(Math.max(c.locationCount || 1, 1)) * 2.5, 3), 18) + 5
+            : Math.min(Math.max(Math.sqrt(Math.max(c.locationCount || 1, 1)) * 4, 6), 28) + 5;
+          const d = (mx - x) ** 2 + (my - y) ** 2;
+          if (d <= r * r && d < bestDist) {
+            best = c;
+            bestDist = d;
+            if (fp === 'national') return best; // National is on top, first match wins
+          }
+        }
+        if (best) return best; // Found in this priority level
       }
       return null;
     },
@@ -635,6 +654,8 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
   }, [companies, heatMode, selectedId, draw, drawMinimap, calcBounds, resize, fitToData]);
 
   // Mouse handlers
+  // Throttle hover hit-testing for large datasets
+  const lastHoverTime = useRef(0);
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (dragState.current.on) {
@@ -646,6 +667,11 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
         animFrameRef.current = requestAnimationFrame(() => draw());
         return;
       }
+      // Throttle hit-testing to every 50ms for large datasets
+      const now = Date.now();
+      if (companies.length > 2000 && now - lastHoverTime.current < 50) return;
+      lastHoverTime.current = now;
+
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const c = hitTest(e.clientX - rect.left, e.clientY - rect.top);
@@ -653,7 +679,7 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
       if (canvas) canvas.style.cursor = c ? 'pointer' : 'crosshair';
       onHover(c, e.clientX, e.clientY);
     },
-    [hitTest, onHover, draw]
+    [hitTest, onHover, draw, companies.length]
   );
 
   const handleMouseDown = useCallback(
