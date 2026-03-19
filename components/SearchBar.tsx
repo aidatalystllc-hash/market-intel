@@ -102,11 +102,11 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
   return (
     <div
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top: 56,
         left: 0,
         right: 0,
-        zIndex: 200,
+        zIndex: 9000,
         fontFamily: "'Syne', system-ui, sans-serif",
       }}
     >
@@ -116,7 +116,8 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
           position: 'fixed',
           inset: 0,
           top: 56,
-          zIndex: 199,
+          zIndex: 8999,
+          background: 'rgba(0,0,0,0.1)',
         }}
         onClick={onClose}
       />
@@ -125,7 +126,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
       <div
         style={{
           position: 'relative',
-          zIndex: 200,
+          zIndex: 9000,
           background: 'var(--bg2)',
           borderBottom: '1px solid var(--bd)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
