@@ -168,7 +168,7 @@ Already mapped columns (do NOT re-map these): ${JSON.stringify(autoMapped)}`;
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20241022',
+      model: 'claude-3-haiku-20240307',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [
