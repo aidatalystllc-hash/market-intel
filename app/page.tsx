@@ -445,6 +445,7 @@ function DashboardPage() {
         allCompanies={companies}
         onClose={() => setSelectedCompany(null)}
         onSelectCompany={handleSelect}
+        datasetId={datasetId}
       />
 
       {/* ── LOCATION DETAIL PANEL ── */}

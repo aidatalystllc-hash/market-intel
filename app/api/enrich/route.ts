@@ -56,10 +56,11 @@ type EnrichType = keyof typeof ENRICH_TYPES;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { domain, enrichType = 'services-pricing', locationUrl } = body as {
+    const { domain, enrichType = 'services-pricing', locationUrl, datasetId } = body as {
       domain: string;
       enrichType?: EnrichType;
-      locationUrl?: string; // For location-specific enrichment
+      locationUrl?: string;
+      datasetId?: string;
     };
 
     const firecrawlKey = process.env.FIRECRAWL_API_KEY;
@@ -72,6 +73,29 @@ export async function POST(req: NextRequest) {
 
     if (!domain) {
       return NextResponse.json({ error: 'No domain provided.', enrichedData: null }, { status: 400 });
+    }
+
+    // Check budget if dataset ID is provided
+    let budgetOk = true;
+    let budgetRemaining = Infinity;
+    if (datasetId) {
+      try {
+        const { checkBudget } = await import('@/lib/usageTracker');
+        const budget = await checkBudget(datasetId);
+        budgetOk = budget.allowed;
+        budgetRemaining = budget.remaining;
+      } catch {
+        // If usage tracking fails (no blob store), allow the call
+      }
+    }
+
+    if (!budgetOk) {
+      return NextResponse.json({
+        error: `Enrichment budget has been reached for this dataset. Maximum: $${process.env.ENRICHMENT_CAP_USD || '3.00'}. Contact your administrator to increase the limit.`,
+        enrichedData: null,
+        budgetExceeded: true,
+        remaining: 0,
+      });
     }
 
     const config = ENRICH_TYPES[enrichType] || ENRICH_TYPES['services-pricing'];
@@ -121,9 +145,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try Claude for structured extraction
+    // Try Claude for structured extraction — track token usage
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     let enrichedData: Record<string, unknown> = {};
+    let claudeInputTokens = 0;
+    let claudeOutputTokens = 0;
 
     if (anthropicKey && anthropicKey !== 'your_key_here') {
       try {
@@ -138,6 +164,10 @@ export async function POST(req: NextRequest) {
             content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
           }],
         });
+
+        // Track actual token usage from response
+        claudeInputTokens = response.usage?.input_tokens ?? 0;
+        claudeOutputTokens = response.usage?.output_tokens ?? 0;
 
         const text = response.content[0].type === 'text' ? response.content[0].text : '';
         const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -170,11 +200,38 @@ export async function POST(req: NextRequest) {
       enrichedData._note = 'Basic extraction only. Add an Anthropic API key for AI-powered enrichment.';
     }
 
+    // Record usage for cost tracking
+    let costInfo = { estimated: 0, remaining: budgetRemaining };
+    if (datasetId) {
+      try {
+        const { recordUsage, estimateCost } = await import('@/lib/usageTracker');
+        const firecrawlCreditsUsed = 1; // Each scrape = 1 credit
+        const cost = estimateCost(firecrawlCreditsUsed, claudeInputTokens, claudeOutputTokens);
+        const updatedUsage = await recordUsage(datasetId, {
+          enrichType: enrichType || 'unknown',
+          domain,
+          firecrawlCredits: firecrawlCreditsUsed,
+          claudeInputTokens,
+          claudeOutputTokens,
+        });
+        costInfo = {
+          estimated: cost,
+          remaining: Math.max(0, updatedUsage.capUsd - updatedUsage.totalEstimatedCost),
+        };
+      } catch {
+        // Usage tracking failed — non-fatal
+      }
+    }
+
     return NextResponse.json({
       enrichedData,
       enrichType,
       scrapedUrl,
       lastEnriched: new Date().toISOString(),
+      cost: {
+        thisCall: `$${costInfo.estimated.toFixed(4)}`,
+        remaining: `$${costInfo.remaining.toFixed(2)}`,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

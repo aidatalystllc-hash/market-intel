@@ -79,6 +79,7 @@ interface DetailPanelProps {
   allCompanies: Company[];
   onClose: () => void;
   onSelectCompany: (company: Company) => void;
+  datasetId?: string | null;
 }
 
 /* ── Component ── */
@@ -88,6 +89,7 @@ export default function DetailPanel({
   allCompanies,
   onClose,
   onSelectCompany,
+  datasetId,
 }: DetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [animatedScore, setAnimatedScore] = useState(0);
@@ -810,7 +812,7 @@ export default function DetailPanel({
                       const res = await fetch('/api/enrich', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ domain: company.domain, enrichType: opt.key }),
+                        body: JSON.stringify({ domain: company.domain, enrichType: opt.key, datasetId }),
                       });
                       const data = await res.json();
                       if (data.error) {
