@@ -67,8 +67,9 @@ export async function loadUsage(datasetId: string): Promise<UsageData> {
     const { blobs } = await list({ prefix: `usage/${datasetId}` });
     if (blobs.length === 0) return defaultData;
 
-    const downloadUrl = blobs[0].downloadUrl || blobs[0].url;
-    const res = await fetch(downloadUrl);
+    const { getDownloadUrl } = await import('@vercel/blob');
+    const signedUrl = await getDownloadUrl(blobs[0].url);
+    const res = await fetch(signedUrl);
     if (!res.ok) return defaultData;
     const data = await res.json() as UsageData;
     data.capUsd = cap; // Always use current cap from env

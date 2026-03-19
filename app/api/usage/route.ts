@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { list } from '@vercel/blob';
+import { list, getDownloadUrl } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
     const { blobs } = await list({ prefix: `usage/${datasetId}` });
 
     if (blobs.length === 0) {
-      // No usage file yet — return defaults
       return NextResponse.json({
         datasetId,
         totalCost: '$0.0000',
@@ -29,18 +28,18 @@ export async function GET(req: NextRequest) {
         firecrawlCredits: 0,
         lastUsed: new Date().toISOString(),
         recentHistory: [],
-        debug: { blobsFound: 0, prefix: `usage/${datasetId}` },
+        debug: { blobsFound: 0 },
       });
     }
 
-    // Read the usage blob
-    const downloadUrl = blobs[0].downloadUrl || blobs[0].url;
-    const res = await fetch(downloadUrl);
+    // Get a signed download URL for the private blob
+    const signedUrl = await getDownloadUrl(blobs[0].url);
+    const res = await fetch(signedUrl);
 
     if (!res.ok) {
       return NextResponse.json({
         error: `Could not read usage blob (HTTP ${res.status})`,
-        debug: { blobUrl: blobs[0].url, downloadUrl },
+        debug: { blobUrl: blobs[0].url, signedUrl: signedUrl.slice(0, 80) + '...' },
       });
     }
 
@@ -57,11 +56,6 @@ export async function GET(req: NextRequest) {
       firecrawlCredits: usage.totalFirecrawlCredits || 0,
       lastUsed: usage.updatedAt || blobs[0].uploadedAt,
       recentHistory: (usage.history || []).slice(-10),
-      debug: {
-        blobsFound: blobs.length,
-        blobPath: blobs[0].pathname,
-        blobSize: blobs[0].size,
-      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

@@ -229,8 +229,9 @@ export async function POST(req: NextRequest) {
         try {
           const { blobs } = await blobList({ prefix: `usage/${datasetId}` });
           if (blobs.length > 0) {
-            const dlUrl = blobs[0].downloadUrl || blobs[0].url;
-            const existing = await fetch(dlUrl);
+            const { getDownloadUrl } = await import('@vercel/blob');
+            const signedUrl = await getDownloadUrl(blobs[0].url);
+            const existing = await fetch(signedUrl);
             if (existing.ok) {
               usage = await existing.json();
             }

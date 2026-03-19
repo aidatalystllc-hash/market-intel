@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { list } from '@vercel/blob';
+import { list, getDownloadUrl } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Load a specific dataset by ID, or the latest dataset if no ID provided.
- * Server-side endpoint — reads from Vercel Blob store using downloadUrl for private blobs.
+ * Uses getDownloadUrl for signed access to private blobs.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -18,9 +18,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ data: null, message: `Dataset "${datasetId}" not found.` });
       }
 
-      // For private stores, downloadUrl includes the auth token
-      const downloadUrl = blobs[0].downloadUrl || blobs[0].url;
-      const res = await fetch(downloadUrl);
+      const signedUrl = await getDownloadUrl(blobs[0].url);
+      const res = await fetch(signedUrl);
       if (!res.ok) {
         return NextResponse.json({ data: null, message: `Could not load dataset (HTTP ${res.status}).` });
       }
@@ -40,8 +39,8 @@ export async function GET(req: NextRequest) {
       new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
     )[0];
 
-    const downloadUrl = latest.downloadUrl || latest.url;
-    const res = await fetch(downloadUrl);
+    const signedUrl = await getDownloadUrl(latest.url);
+    const res = await fetch(signedUrl);
     if (!res.ok) {
       return NextResponse.json({ data: null, message: 'Could not load data.' });
     }
