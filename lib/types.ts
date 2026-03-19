@@ -9,6 +9,7 @@ export interface Location {
   lng: number;
   rating: number | null;
   reviews: number | null;
+  photosCount: number | null;
   phone: string;
   website: string;
   hours: string;
@@ -44,7 +45,9 @@ export interface Company {
   executiveName: string;
   executiveTitle: string;
   executiveEmail: string;
+  executivePhone: string;
   parentCompany: string;
+  totalPhotos: number | null;
   locations: Location[];
   maScore: number;
 }

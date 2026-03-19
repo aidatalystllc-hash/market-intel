@@ -16,74 +16,120 @@ const SCHEMA_FIELDS = [
  */
 export function autoDetectColumns(columnNames: string[]): ColumnMapping {
   const mapping: ColumnMapping = {};
-  const lower = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const lowerKeepSpaces = (s: string) => s.toLowerCase().trim();
+  const lc = (s: string) => s.toLowerCase().trim();
 
   // Track which schema fields are already mapped to avoid duplicates
   const mapped = new Set<string>();
 
-  // Priority-ordered mapping rules. First match wins per column.
-  // We also ensure each schema field is only mapped once (best match).
-  const rules: { test: (l: string, orig: string) => boolean; field: string }[] = [
-    // Name — very important, handle common patterns
-    { test: (l) => l === 'name' || l === 'companyname' || l === 'businessname' || l === 'company' || l === 'namelinkedin' || l === 'nameforemails', field: 'name' },
-    // Coordinates
-    { test: (l) => l === 'latitude' || (l.includes('lat') && !l.includes('late') && !l.includes('relat')), field: 'latitude' },
-    { test: (l) => l === 'longitude' || l.includes('lng') || l.includes('longitude') || l === 'lon', field: 'longitude' },
-    // Domain/website
-    { test: (l) => l === 'domain' || l === 'website' || (l.includes('domain') && !l.includes('creation')), field: 'domain' },
-    // Rating
-    { test: (l) => l === 'rating' || l.includes('avgrating') || l.includes('averagerating') || l.includes('googlerating'), field: 'rating' },
-    // Reviews
-    { test: (l) => l === 'reviews' || l.includes('reviewcount') || l.includes('totalreviews') || l.includes('numberofreviews'), field: 'reviews' },
-    // City — handle "(LinkedIn)" suffixed columns
-    { test: (l) => l === 'city' || l === 'hqcity' || l === 'hqcitylinkedin' || l.includes('citylinkedin'), field: 'city' },
-    // State
-    { test: (l) => (l.includes('state') && !l.includes('status')) || l.includes('province') || l === 'hqstatelinkedin' || l === 'statecode', field: 'state' },
-    // Employee size
-    { test: (l) => l === 'sizelinkedin' || (l.includes('employee') && l.includes('size')), field: 'employee_size' },
-    // Employees
-    { test: (l) => l.includes('employee') && !l.includes('size') && !l.includes('count6') && !l.includes('event'), field: 'employees' },
-    // Founded
-    { test: (l) => l.includes('founded') || l.includes('yearfounded'), field: 'founded' },
-    // Revenue
-    { test: (l) => l.includes('revenue') && !l.includes('6month'), field: 'revenue' },
-    // Phone
-    { test: (l) => l === 'phone' || (l.includes('phone') && !l.includes('2') && !l.includes('3')), field: 'phone' },
-    // Address
-    { test: (l) => l === 'address' || l === 'streetaddress' || (l === 'street' && !l.includes('view')), field: 'address' },
-    // LinkedIn URL
-    { test: (l) => l === 'urllinkedin' || l === 'linkedinlead411' || (l.includes('linkedin') && l.includes('url')), field: 'linkedin_url' },
-    // Description
-    { test: (l) => l === 'description' || l === 'descriptionlinkedin' || l === 'companydescriptionlead411' || l.includes('about'), field: 'description' },
-    // PE/Investor detection — handle "Investors (PEI)_type" patterns
-    { test: (l, orig) => lowerKeepSpaces(orig).includes('investors (pei)_type') || l === 'investorspeiitype' || ((l.includes('pe') || l.includes('investor')) && (l.includes('back') || l.includes('type'))), field: 'is_pe_backed' },
-    { test: (l, orig) => lowerKeepSpaces(orig).includes('investors (pei)_firm') || l.includes('pefirm') || l.includes('investorfirm'), field: 'pe_firm' },
-    // Score
-    { test: (l) => l === 'score' || l === 'uduscore' || l.includes('uduscore') || l.includes('platformscore') || l === 'udumatch', field: 'score' },
-    // Location count
-    { test: (l) => l.includes('locationcount') || (l.includes('location') && l.includes('count')), field: 'location_count' },
-    // Services / specialties / target phrases
-    { test: (l) => l.includes('specialties') || l.includes('targetphraseslist') || l.includes('service') || l.includes('offering'), field: 'services' },
-    // Parent company
-    { test: (l, orig) => lowerKeepSpaces(orig).includes('parent company') || l.includes('parentcompany') || l.includes('holding'), field: 'parent_company' },
-    // Executive name
-    { test: (l, orig) => lowerKeepSpaces(orig).includes('key executives') && lowerKeepSpaces(orig).includes('name_1'), field: 'executive_name' },
-    // Executive title
-    { test: (l, orig) => lowerKeepSpaces(orig).includes('key executives') && lowerKeepSpaces(orig).includes('title_1'), field: 'executive_title' },
-    // Executive email
-    { test: (l, orig) => (lowerKeepSpaces(orig).includes('contact cards') && lowerKeepSpaces(orig).includes('emails_1')) || (lowerKeepSpaces(orig).includes('apollo contact') && lowerKeepSpaces(orig).includes('email_1')), field: 'executive_email' },
-  ];
-
-  for (const col of columnNames) {
-    const l = lower(col);
-    for (const rule of rules) {
-      if (!mapped.has(rule.field) && rule.test(l, col)) {
-        mapping[col] = rule.field;
-        mapped.add(rule.field);
-        break;
-      }
+  function assign(col: string, field: string) {
+    if (!mapped.has(field) && !mapping[col]) {
+      mapping[col] = field;
+      mapped.add(field);
     }
+  }
+
+  // PASS 1: Exact/high-confidence matches using original column names
+  // These use the full original column name for precision
+  for (const col of columnNames) {
+    const c = lc(col);
+
+    // Name — prefer "Name" over "Company" (Company is often a URL in UDU data)
+    if (c === 'name') assign(col, 'name');
+    // Coordinates — exact match only, NOT substring (to avoid "platform" matching "lat")
+    else if (c === 'latitude') assign(col, 'latitude');
+    else if (c === 'longitude') assign(col, 'longitude');
+    // Domain
+    else if (c === 'domain') assign(col, 'domain');
+    else if (c === 'website' || c === 'site') assign(col, 'domain');
+    // Rating/reviews
+    else if (c === 'rating') assign(col, 'rating');
+    else if (c === 'reviews') assign(col, 'reviews');
+    // Location data
+    else if (c === 'city') assign(col, 'city');
+    else if (c === 'state') assign(col, 'state');
+    else if (c === 'phone') assign(col, 'phone');
+    else if (c === 'address' || c === 'full_address' || c === 'street') assign(col, 'address');
+    else if (c === 'description') assign(col, 'description');
+    else if (c === 'subtypes' || c === 'category') assign(col, 'services');
+    else if (c === 'photos_count') assign(col, 'photos_count');
+    // Score
+    else if (c === 'udu score' || c === 'udu_score') assign(col, 'score');
+    else if (c === 'score') assign(col, 'score');
+  }
+
+  // PASS 2: Pattern matches for UDU/LinkedIn/Lead411 columns
+  for (const col of columnNames) {
+    const c = lc(col);
+
+    // PE Investors — ONLY from Investors (PEI) columns, NOT Company Type or Ownership Status
+    if (c.startsWith('investors (pei)_type')) assign(col, 'is_pe_backed');
+    else if (c.startsWith('investors (pei)_firm_1') && !c.includes('platform') && !c.includes('addon')) assign(col, 'pe_firm');
+
+    // LinkedIn-specific columns — these OVERRIDE Lead411/generic columns
+    else if (c === 'name (linkedin)' && !mapped.has('name')) assign(col, 'name');
+    else if (c === 'hq city (linkedin)') {
+      // Override any previously mapped city (LinkedIn HQ is more accurate)
+      for (const [k, v] of Object.entries(mapping)) { if (v === 'city') { delete mapping[k]; mapped.delete('city'); break; } }
+      assign(col, 'city');
+    }
+    else if (c === 'hq state (linkedin)') assign(col, 'hq_state'); // separate field for HQ state
+    else if (c === 'size (linkedin)') assign(col, 'employee_size');
+    else if (c === 'employees (linkedin)' && !mapped.has('employees')) assign(col, 'employees');
+    else if (c === 'founded (linkedin)') assign(col, 'founded');
+    else if (c === 'specialties (linkedin)' && !mapped.has('services')) assign(col, 'services');
+    else if (c === 'description (linkedin)' && !mapped.has('description')) assign(col, 'description');
+    else if (c === 'url (linkedin)') assign(col, 'linkedin_url');
+    else if (c === 'parent company (linkedin)_name') assign(col, 'parent_company');
+    else if (c === 'ownership status (linkedin)') assign(col, 'ownership_status'); // NOT pe_backed
+
+    // Lead411 columns
+    else if (c === 'employees (lead411)' && !mapped.has('employees')) assign(col, 'employees');
+    else if (c === 'city (lead411)' && !mapped.has('city')) assign(col, 'city');
+    else if (c === 'state (lead411)' && !mapped.has('state')) assign(col, 'state');
+    else if (c === 'phone (lead411)' && !mapped.has('phone')) assign(col, 'phone');
+    else if (c === 'linkedin (lead411)' && !mapped.has('linkedin_url')) assign(col, 'linkedin_url');
+    else if (c.startsWith('annual revenue') && c.includes('printed') && !mapped.has('revenue')) assign(col, 'revenue');
+
+    // Key executives
+    else if (c === 'key executives (linkedin)_name_1') assign(col, 'executive_name');
+    else if (c === 'key executives (linkedin)_title_1') assign(col, 'executive_title');
+
+    // Contact data — multiple sources
+    else if (c === 'contact cards_emails_1' && !mapped.has('executive_email')) assign(col, 'executive_email');
+    else if (c === 'contact cards_name_1' && !mapped.has('executive_name')) assign(col, 'executive_name');
+    else if (c === 'contact cards_job_title_1' && !mapped.has('executive_title')) assign(col, 'executive_title');
+    else if (c === 'contact cards_phone_numbers_1') assign(col, 'executive_phone');
+
+    // Apollo contact data
+    else if (c === 'apollo contact data_email_1' && !mapped.has('executive_email')) assign(col, 'executive_email');
+    else if (c === 'apollo contact data_first_name_1') assign(col, 'apollo_first_name');
+    else if (c === 'apollo contact data_last_name_1') assign(col, 'apollo_last_name');
+    else if (c === 'apollo contact data_title_1' && !mapped.has('executive_title')) assign(col, 'executive_title');
+  }
+
+  // PASS 3: Fuzzy fallbacks for columns not yet mapped
+  for (const col of columnNames) {
+    if (mapping[col]) continue; // already mapped
+    const stripped = col.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Name fallback — only if name not yet mapped
+    if (!mapped.has('name') && (stripped === 'companyname' || stripped === 'businessname')) assign(col, 'name');
+    // Company column as name fallback (often a URL in UDU but name in other formats)
+    else if (!mapped.has('name') && stripped === 'company') assign(col, 'name');
+    // Domain fallback
+    else if (!mapped.has('domain') && stripped.includes('website')) assign(col, 'domain');
+    else if (!mapped.has('domain') && stripped.includes('domain') && !stripped.includes('creation')) assign(col, 'domain');
+    // Coordinates — strict check to avoid "platform" matching
+    else if (!mapped.has('latitude') && (stripped === 'lat' || stripped === 'companylat' || stripped === 'hqlat')) assign(col, 'latitude');
+    else if (!mapped.has('longitude') && (stripped === 'lng' || stripped === 'lon' || stripped === 'companylng' || stripped === 'hqlng')) assign(col, 'longitude');
+    // Founded
+    else if (!mapped.has('founded') && stripped.includes('founded')) assign(col, 'founded');
+    // Revenue
+    else if (!mapped.has('revenue') && stripped.includes('revenue') && !stripped.includes('6month')) assign(col, 'revenue');
+    // Score
+    else if (!mapped.has('score') && (stripped.includes('uduscore') || stripped.includes('platformscore'))) assign(col, 'score');
+    // Parent company
+    else if (!mapped.has('parent_company') && stripped.includes('parentcompany')) assign(col, 'parent_company');
   }
 
   return mapping;

@@ -2,17 +2,14 @@ import type { Company, Location, ColumnMapping } from './types';
 import { calcFootprint } from './footprintCalc';
 import { calcMAScore } from './maScoreCalc';
 
-/**
- * Normalize a domain string for matching: lowercase, strip protocol/www/trailing slash/path.
- */
 function normalizeDomain(raw: unknown): string {
   if (!raw || typeof raw !== 'string') return '';
   return raw
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
-    .replace(/[?#].*$/, '')  // strip query strings and fragments
-    .replace(/\/.*$/, '')     // strip paths
+    .replace(/[?#].*$/, '')
+    .replace(/\/.*$/, '')
     .replace(/\/$/, '')
     .trim();
 }
@@ -35,9 +32,68 @@ function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: 
   return undefined;
 }
 
+// Values that should NOT be treated as PE firm names
+const NON_PE_VALUES = new Set([
+  'private', 'privately held', 'self-owned', 'self owned', 'self-employed',
+  'family owned', 'family-owned', 'independent', 'n/a', '—', '', 'public',
+  'publicly traded', 'public company', 'government', 'nonprofit', 'non-profit',
+  'educational', 'partnership',
+]);
+
 /**
- * Transform raw company rows into Company objects using the column mapping.
+ * Determine if a company is PE-backed using only the Investors (PEI) columns.
+ * Never use "Ownership status" or "Company Type" for PE detection.
  */
+function detectPE(row: Record<string, unknown>, mapping: ColumnMapping): {
+  isPE: boolean;
+  peFirm: string;
+  peType: string;
+} {
+  const peTypeRaw = toStr(getMapped(row, mapping, 'is_pe_backed')).trim();
+  const peFirmRaw = toStr(getMapped(row, mapping, 'pe_firm')).trim();
+
+  // Check if the pe_type has a real value (not a generic ownership status)
+  const peTypeLower = peTypeRaw.toLowerCase();
+  const peFirmLower = peFirmRaw.toLowerCase();
+
+  const hasRealType = peTypeLower.length > 0 && !NON_PE_VALUES.has(peTypeLower);
+  const hasRealFirm = peFirmLower.length > 0 && !NON_PE_VALUES.has(peFirmLower)
+    && !peFirmLower.startsWith('http');
+
+  const isPE = hasRealType || hasRealFirm;
+  const peFirm = hasRealFirm ? peFirmRaw : '';
+  const peType = hasRealType ? peTypeRaw : (isPE ? 'Platform' : '');
+
+  return { isPE, peFirm, peType };
+}
+
+/**
+ * Extract a clean company name, preferring "Name" over URL-based "Company" column.
+ */
+function extractName(row: Record<string, unknown>, mapping: ColumnMapping, index: number): string {
+  // Priority: name field (from "Name" column) > "Name (LinkedIn)" > domain-based fallback
+  const name = toStr(getMapped(row, mapping, 'name'));
+
+  // If the "name" field looks like a URL, try to extract a real name
+  if (name && !name.startsWith('http') && !name.includes('.com') && !name.includes('.org')) {
+    return name;
+  }
+
+  // Fallback: clean up a URL into a readable name
+  if (name) {
+    const cleaned = name
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .replace(/\/$/, '')
+      .replace(/\.(com|org|net|co|io|us).*$/, '')
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    if (cleaned.length > 2) return cleaned;
+  }
+
+  return `Company ${index + 1}`;
+}
+
 export function transformCompanies(
   companyRows: Record<string, unknown>[],
   companyMapping: ColumnMapping,
@@ -61,9 +117,10 @@ export function transformCompanies(
         lng: toNum(getMapped(row, locationMapping, 'longitude')) ?? NaN,
         rating: toNum(getMapped(row, locationMapping, 'rating')),
         reviews: toNum(getMapped(row, locationMapping, 'reviews')),
+        photosCount: toNum(getMapped(row, locationMapping, 'photos_count')),
         phone: toStr(getMapped(row, locationMapping, 'phone')),
         website: toStr(getMapped(row, locationMapping, 'domain')),
-        hours: '',
+        hours: toStr(getMapped(row, locationMapping, 'hours') || row['working_hours'] || ''),
         photos: [],
         bookingLink: '',
         googleMapsLink: '',
@@ -81,23 +138,10 @@ export function transformCompanies(
   for (let i = 0; i < companyRows.length; i++) {
     const row = companyRows[i];
     const domain = normalizeDomain(getMapped(row, companyMapping, 'domain'));
-
-    // Get matched locations
     const locations = locationsByDomain.get(domain) ?? [];
 
-    // PE detection
-    const peRaw = getMapped(row, companyMapping, 'is_pe_backed');
-    const peFirm = toStr(getMapped(row, companyMapping, 'pe_firm'));
-    let isPE = false;
-    if (peRaw) {
-      const peStr = toStr(peRaw).toLowerCase();
-      isPE = peStr === 'true' || peStr === 'yes' || peStr === '1' || peFirm.length > 0;
-      // If the pe_backed column contains a firm name
-      if (!isPE && peStr.length > 3 && peStr !== 'false' && peStr !== 'no') {
-        isPE = true;
-      }
-    }
-    if (peFirm && !isPE) isPE = true;
+    // PE detection — uses ONLY Investors (PEI) columns
+    const { isPE, peFirm, peType } = detectPE(row, companyMapping);
 
     // Services parsing
     const svcRaw = toStr(getMapped(row, companyMapping, 'services'));
@@ -105,14 +149,13 @@ export function transformCompanies(
       ? svcRaw.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
       : [];
 
-    // Location count: from data or from matched locations
+    // Location count
     const locationCountRaw = toNum(getMapped(row, companyMapping, 'location_count'));
-    const locationCount = locationCountRaw ?? locations.length ?? 1;
+    const locationCount = locationCountRaw ?? (locations.length || 1);
 
-    // Calculate avg rating from locations if available, otherwise from company data
+    // Ratings from locations or company data
     const companyRating = toNum(getMapped(row, companyMapping, 'rating'));
     const companyReviews = toNum(getMapped(row, companyMapping, 'reviews'));
-
     let avgRating = companyRating;
     let totalReviews = companyReviews;
     if (locations.length > 0) {
@@ -127,10 +170,26 @@ export function transformCompanies(
       }
     }
 
-    // Employee size
+    // Total photos from locations
+    let totalPhotos: number | null = null;
+    if (locations.length > 0) {
+      const withPhotos = locations.filter((l) => l.photosCount !== null);
+      if (withPhotos.length > 0) {
+        totalPhotos = withPhotos.reduce((s, l) => s + (l.photosCount ?? 0), 0);
+      }
+    }
+
+    // Employee size — prefer LinkedIn size range
     const employeeSize = toStr(getMapped(row, companyMapping, 'employee_size'));
 
-    // Calculate lat/lng: use company data or avg of locations
+    // State — prefer HQ State (LinkedIn) for accuracy, fallback to mapped state
+    const hqState = toStr(getMapped(row, companyMapping, 'hq_state'));
+    const companyState = hqState || toStr(getMapped(row, companyMapping, 'state'));
+
+    // City
+    const companyCity = toStr(getMapped(row, companyMapping, 'city'));
+
+    // Lat/lng — from company data or avg of locations
     let lat = toNum(getMapped(row, companyMapping, 'latitude'));
     let lng = toNum(getMapped(row, companyMapping, 'longitude'));
     if ((lat === null || lng === null) && locations.length > 0) {
@@ -141,23 +200,28 @@ export function transformCompanies(
       }
     }
 
-    // State count for footprint calculation
+    // State count for footprint
     const states = new Set<string>();
-    const companyState = toStr(getMapped(row, companyMapping, 'state'));
     if (companyState) states.add(companyState.toLowerCase());
-    locations.forEach((l) => {
-      if (l.state) states.add(l.state.toLowerCase());
-    });
+    locations.forEach((l) => { if (l.state) states.add(l.state.toLowerCase()); });
 
     const footprint = calcFootprint(locationCount, states.size, employeeSize);
 
+    // Executive name — combine Apollo first+last if available
+    let execName = toStr(getMapped(row, companyMapping, 'executive_name'));
+    if (!execName) {
+      const first = toStr(getMapped(row, companyMapping, 'apollo_first_name'));
+      const last = toStr(getMapped(row, companyMapping, 'apollo_last_name'));
+      if (first || last) execName = [first, last].filter(Boolean).join(' ');
+    }
+
     const company: Company = {
       id: `company-${i}`,
-      name: toStr(getMapped(row, companyMapping, 'name')) || `Company ${i + 1}`,
+      name: extractName(row, companyMapping, i),
       domain,
       lat,
       lng,
-      city: toStr(getMapped(row, companyMapping, 'city')),
+      city: companyCity,
       state: companyState,
       description: toStr(getMapped(row, companyMapping, 'description')),
       employees: toNum(getMapped(row, companyMapping, 'employees')),
@@ -166,26 +230,23 @@ export function transformCompanies(
       founded: toNum(getMapped(row, companyMapping, 'founded')),
       footprint,
       isPE,
-      peFirm: peFirm || (() => {
-        const raw = toStr(getMapped(row, companyMapping, 'is_pe_backed')).trim();
-        // Don't use boolean-like values as firm names
-        const skip = ['yes', 'no', 'true', 'false', '1', '0', ''];
-        return skip.includes(raw.toLowerCase()) ? '' : raw;
-      })(),
-      peType: toStr(getMapped(row, companyMapping, 'pe_type')) || (isPE ? 'Platform' : ''),
+      peFirm,
+      peType,
       isFamily: !isPE,
       services,
       score: toNum(getMapped(row, companyMapping, 'score')) ?? 0,
       locationCount,
       avgRating,
       totalReviews,
+      totalPhotos,
       linkedinUrl: toStr(getMapped(row, companyMapping, 'linkedin_url')),
-      executiveName: toStr(getMapped(row, companyMapping, 'executive_name')),
+      executiveName: execName,
       executiveTitle: toStr(getMapped(row, companyMapping, 'executive_title')),
       executiveEmail: toStr(getMapped(row, companyMapping, 'executive_email')),
+      executivePhone: toStr(getMapped(row, companyMapping, 'executive_phone')),
       parentCompany: toStr(getMapped(row, companyMapping, 'parent_company')),
       locations,
-      maScore: 0, // calculated below
+      maScore: 0,
     };
 
     company.maScore = calcMAScore(company);
