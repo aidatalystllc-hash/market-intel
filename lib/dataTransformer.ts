@@ -83,7 +83,7 @@ function extractName(row: Record<string, unknown>, mapping: ColumnMapping, index
   const rawName = toStr(getMapped(row, mapping, 'name'));
 
   // If the "name" field looks like a real name (not a URL), clean and return
-  if (rawName && !rawName.startsWith('http') && !rawName.includes('.com') && !rawName.includes('.org')) {
+  if (rawName && !rawName.startsWith('http') && !/\.(com|org|net|co|io|us|biz|info)\b/.test(rawName)) {
     return cleanCompanyName(rawName);
   }
 
@@ -269,7 +269,7 @@ export function transformCompanies(
       isPE,
       peFirm,
       peType,
-      isFamily: !isPE,
+      isFamily: false, // No reliable family-owned indicator in the data
       services,
       score: toNum(getMapped(row, companyMapping, 'score')) ?? 0,
       locationCount,

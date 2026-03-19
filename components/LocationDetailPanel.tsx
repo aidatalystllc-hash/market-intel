@@ -404,7 +404,7 @@ export default function LocationDetailPanel({
             <div>
               <div style={labelStyle}>Employees</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {parentCompany.employeeSize || (parentCompany.employees ? parentCompany.employees.toLocaleString() : '—')}
+                {parentCompany.employeeSize || (parentCompany.employees ? `~${parentCompany.employees.toLocaleString()}` : '—')}
               </div>
             </div>
             <div>
