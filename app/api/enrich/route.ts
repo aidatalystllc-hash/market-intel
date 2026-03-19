@@ -227,14 +227,10 @@ export async function POST(req: NextRequest) {
         // Load existing usage
         let usage = { totalEstimatedCost: 0, totalCalls: 0, totalFirecrawlCredits: 0, history: [] as unknown[] };
         try {
-          const { blobs } = await blobList({ prefix: `usage/${datasetId}` });
-          if (blobs.length > 0) {
-            const { getDownloadUrl } = await import('@vercel/blob');
-            const signedUrl = await getDownloadUrl(blobs[0].url);
-            const existing = await fetch(signedUrl);
-            if (existing.ok) {
-              usage = await existing.json();
-            }
+          const { readBlob } = await import('@/lib/blobHelpers');
+          const existing = await readBlob(`usage/${datasetId}`);
+          if (existing && typeof existing === 'object') {
+            usage = existing as typeof usage;
           }
         } catch (loadErr) {
           console.error('Usage load failed:', loadErr);
@@ -263,12 +259,8 @@ export async function POST(req: NextRequest) {
           updatedAt: new Date().toISOString(),
         });
 
-        const saveResult = await blobPut(`usage/${datasetId}.json`, savePayload, {
-          access: 'private',
-          contentType: 'application/json',
-          addRandomSuffix: false,
-          allowOverwrite: true,
-        });
+        const { writeBlob } = await import('@/lib/blobHelpers');
+        const saveUrl = await writeBlob(`usage/${datasetId}.json`, JSON.parse(savePayload));
 
         costInfo = {
           estimated: cost,
@@ -276,7 +268,7 @@ export async function POST(req: NextRequest) {
           trackingError: '',
           saved: true,
         };
-        console.log(`Usage saved: ${saveResult.url}, total=$${usage.totalEstimatedCost.toFixed(4)}, calls=${usage.totalCalls}`);
+        console.log(`Usage saved: ${saveUrl}, total=$${usage.totalEstimatedCost.toFixed(4)}, calls=${usage.totalCalls}`);
       } catch (trackErr) {
         const msg = trackErr instanceof Error ? trackErr.message : String(trackErr);
         console.error('Usage tracking failed:', msg);
