@@ -1,15 +1,21 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import type { Company } from '@/lib/types';
+import type { Company, Location } from '@/lib/types';
 import { FOOTPRINT_COLORS } from '@/lib/types';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+interface LocationClickData {
+  location: Location;
+  parentCompany: Company;
+}
 
 interface MapCanvasProps {
   companies: Company[];
   onHover: (company: Company | null, x: number, y: number) => void;
   onClick: (company: Company) => void;
+  onLocationClick?: (data: LocationClickData) => void;
   selectedId: string | null;
 }
 
@@ -20,7 +26,7 @@ function getFootprintColor(fp: string): string {
 // Map view mode: company dots or individual location dots
 type MapViewMode = 'company' | 'location';
 
-export default function MapCanvas({ companies, onHover, onClick, selectedId }: MapCanvasProps) {
+export default function MapCanvas({ companies, onHover, onClick, onLocationClick, selectedId }: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.CircleMarker[]>([]);
@@ -192,7 +198,22 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
           onHover(c, (rect?.left || 0) + pt.x, (rect?.top || 0) + pt.y);
         });
         marker.on('mouseout', () => onHover(null, 0, 0));
-        marker.on('click', () => onClick(c));
+        // Capture loc in closure for location click
+        const capturedLoc = loc;
+        const capturedCompany = c;
+        marker.on('click', () => {
+          if (onLocationClick) {
+            // Find the full Location object from the parent company
+            const fullLoc = capturedCompany.locations.find(
+              (l) => l.lat === capturedLoc.lat && l.lng === capturedLoc.lng && l.name === capturedLoc.name
+            );
+            if (fullLoc) {
+              onLocationClick({ location: fullLoc, parentCompany: capturedCompany });
+              return;
+            }
+          }
+          onClick(capturedCompany);
+        });
 
         marker.addTo(map);
         markersRef.current.push(marker);
@@ -210,7 +231,7 @@ export default function MapCanvas({ companies, onHover, onClick, selectedId }: M
         );
       }
     }
-  }, [companies, mapViewMode, selectedId, onHover, onClick, getAllLocations]);
+  }, [companies, mapViewMode, selectedId, onHover, onClick, onLocationClick, getAllLocations]);
 
   // Render heat overlay
   const renderHeat = useCallback(() => {

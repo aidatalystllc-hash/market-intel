@@ -10,6 +10,8 @@ import FilterBar from '@/components/FilterBar';
 import SearchBar from '@/components/SearchBar';
 import Tooltip from '@/components/Tooltip';
 import DetailPanel from '@/components/DetailPanel';
+import LocationDetailPanel from '@/components/LocationDetailPanel';
+import type { ClickedLocationData } from '@/components/LocationDetailPanel';
 import CompanyTable from '@/components/CompanyTable';
 import GuidedTour from '@/components/GuidedTour';
 import { loadData } from '@/lib/storage';
@@ -123,6 +125,7 @@ export default function DashboardPage() {
   const [tooltipCompany, setTooltipCompany] = useState<Company | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [locationDetail, setLocationDetail] = useState<ClickedLocationData | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [hasData, setHasData] = useState(false);
@@ -180,6 +183,7 @@ export default function DashboardPage() {
       if (e.key === 'Escape') {
         setSearchOpen(false);
         setSelectedCompany(null);
+        setLocationDetail(null);
       }
     };
     window.addEventListener('keydown', handler);
@@ -204,7 +208,13 @@ export default function DashboardPage() {
 
   const handleSelect = useCallback((company: Company) => {
     setSelectedCompany(company);
+    setLocationDetail(null);
     setSearchOpen(false);
+  }, []);
+
+  const handleLocationClick = useCallback((data: ClickedLocationData) => {
+    setLocationDetail(data);
+    setSelectedCompany(null);
   }, []);
 
   const handleSort = useCallback((key: string) => {
@@ -369,6 +379,7 @@ export default function DashboardPage() {
             companies={filtered}
             onHover={handleHover}
             onClick={handleSelect}
+            onLocationClick={handleLocationClick}
             selectedId={selectedCompany?.id ?? null}
           />
         </div>
@@ -391,6 +402,16 @@ export default function DashboardPage() {
         onClose={() => setSelectedCompany(null)}
         onSelectCompany={handleSelect}
       />
+
+      {/* ── LOCATION DETAIL PANEL ── */}
+      {locationDetail && (
+        <LocationDetailPanel
+          data={locationDetail}
+          allCompanies={companies}
+          onClose={() => setLocationDetail(null)}
+          onViewCompany={handleSelect}
+        />
+      )}
 
       {/* ── COMPANY TABLE ── */}
       <CompanyTable

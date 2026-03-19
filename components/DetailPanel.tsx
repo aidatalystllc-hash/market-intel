@@ -92,6 +92,7 @@ export default function DetailPanel({
   const [animatedScore, setAnimatedScore] = useState(0);
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState('');
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   // Animate platform score bar on mount / company change
   useEffect(() => {
@@ -511,7 +512,50 @@ export default function DetailPanel({
         )}
 
         {/* ── Platform Score ── */}
-        <Section title="Platform Score">
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Platform Score
+            <button
+              onClick={() => setShowScoreInfo((v) => !v)}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                border: '1px solid var(--bd2)',
+                background: showScoreInfo ? 'var(--acc)' : 'var(--bg3)',
+                color: showScoreInfo ? '#fff' : 'var(--tx3)',
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+                padding: 0,
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+              title="What is Platform Score?"
+            >
+              &#8505;
+            </button>
+          </div>
+          {showScoreInfo && (
+            <div
+              style={{
+                background: 'rgba(176,125,16,0.06)',
+                border: '1px solid rgba(176,125,16,0.18)',
+                borderRadius: 6,
+                padding: '8px 12px',
+                marginBottom: 8,
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: 'var(--tx2)',
+              }}
+            >
+              Platform Score reflects digital presence signals, keyword matches, LinkedIn engagement, website maturity, and data completeness. Higher = stronger platform candidate.
+            </div>
+          )}
           <div
             style={{
               display: 'flex',
@@ -544,7 +588,7 @@ export default function DetailPanel({
               }}
             />
           </div>
-        </Section>
+        </div>
 
         {/* ── Locations ── */}
         {company.locations && company.locations.length > 0 && (
@@ -722,7 +766,13 @@ export default function DetailPanel({
                   });
                   const data = await res.json();
                   if (data.error) {
-                    setEnrichMsg(data.error);
+                    // Check for missing Firecrawl API key
+                    const errLower = (data.error as string).toLowerCase();
+                    if (errLower.includes('firecrawl') || errLower.includes('api key') || res.status === 403) {
+                      setEnrichMsg('Enrichment requires a Firecrawl API key. Contact your administrator.');
+                    } else {
+                      setEnrichMsg(data.error);
+                    }
                   } else if (data.enrichedData) {
                     const fields = Object.keys(data.enrichedData).filter(k => data.enrichedData[k]);
                     setEnrichMsg(
