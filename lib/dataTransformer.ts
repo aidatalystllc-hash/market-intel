@@ -145,8 +145,8 @@ export function transformCompanies(
         googleMapsLink: '',
       };
 
-      // Index under both domain variants for maximum match coverage
-      const domainsToIndex = [domain, altDomain].filter(Boolean);
+      // Index under both domain variants, but only if they're different
+      const domainsToIndex = Array.from(new Set([domain, altDomain].filter(Boolean)));
       for (const d of domainsToIndex) {
         if (!locationsByDomain.has(d)) {
           locationsByDomain.set(d, []);
