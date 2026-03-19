@@ -181,9 +181,8 @@ export default function DetailPanel({
     },
     {
       label: 'Employees',
-      value: company.employees
-        ? company.employees.toLocaleString()
-        : company.employeeSize || '—',
+      value: company.employeeSize
+        || (company.employees ? `~${company.employees.toLocaleString()}` : '—'),
     },
     { label: 'Locations', value: String(company.locationCount || 1) },
     { label: 'Revenue', value: formatRevenue(company.revenue) },
@@ -701,7 +700,7 @@ export default function DetailPanel({
                       flexShrink: 0,
                     }}
                   >
-                    {dist < 1 ? '<1' : Math.round(dist)} km
+                    {(() => { const mi = dist * 0.621371; return mi < 0.1 ? '<0.1' : mi.toFixed(1); })()} mi
                   </div>
                 </button>
               ))}

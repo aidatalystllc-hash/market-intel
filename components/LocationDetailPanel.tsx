@@ -114,7 +114,7 @@ export default function LocationDetailPanel({
   datasetId,
 }: LocationDetailPanelProps) {
   const { location, parentCompany } = data;
-  const [distFilter, setDistFilter] = useState(25);
+  const [distFilter, setDistFilter] = useState(25.1);
 
   // Build nearby competitor locations from all companies
   const nearbyCompetitors = useMemo(() => {
