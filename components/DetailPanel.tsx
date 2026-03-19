@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Company, Location } from '@/lib/types';
 import { FOOTPRINT_COLORS, PE_COLOR, ACCENT_COLOR } from '@/lib/types';
 import { getMALabel } from '@/lib/maScoreCalc';
+import { formatRevenue } from '@/lib/formatters';
 
 /* ── Helpers ── */
 
@@ -179,7 +180,7 @@ export default function DetailPanel({
         : company.employeeSize || '—',
     },
     { label: 'Locations', value: String(company.locationCount || 1) },
-    { label: 'Revenue', value: company.revenue || '—' },
+    { label: 'Revenue', value: formatRevenue(company.revenue) },
     { label: 'Founded', value: company.founded ? String(company.founded) : '—' },
     { label: 'Parent Company', value: company.parentCompany || '—' },
   ];

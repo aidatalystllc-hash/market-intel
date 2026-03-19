@@ -1,17 +1,24 @@
 import type { Company, Location, ColumnMapping } from './types';
 import { calcFootprint } from './footprintCalc';
 import { calcMAScore } from './maScoreCalc';
+import { cleanCompanyName } from './formatters';
 
 function normalizeDomain(raw: unknown): string {
-  if (!raw || typeof raw !== 'string') return '';
-  return raw
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/[?#].*$/, '')
-    .replace(/\/.*$/, '')
-    .replace(/\/$/, '')
-    .trim();
+  if (!raw) return '';
+  let s = String(raw).toLowerCase().trim();
+  // Remove protocol
+  s = s.replace(/^https?:\/\//, '');
+  // Remove www. prefix
+  s = s.replace(/^www\./, '');
+  // Remove everything after the first slash (strip paths)
+  s = s.split('/')[0];
+  // Remove query strings and fragments
+  s = s.split('?')[0].split('#')[0];
+  // Remove port numbers
+  s = s.replace(/:\d+$/, '');
+  // Remove trailing dots
+  s = s.replace(/\.$/, '');
+  return s;
 }
 
 function toNum(val: unknown): number | null {
@@ -72,12 +79,14 @@ function detectPE(row: Record<string, unknown>, mapping: ColumnMapping): {
  */
 function extractName(row: Record<string, unknown>, mapping: ColumnMapping, index: number): string {
   // Priority: name field (from "Name" column) > "Name (LinkedIn)" > domain-based fallback
-  const name = toStr(getMapped(row, mapping, 'name'));
+  const rawName = toStr(getMapped(row, mapping, 'name'));
 
-  // If the "name" field looks like a URL, try to extract a real name
-  if (name && !name.startsWith('http') && !name.includes('.com') && !name.includes('.org')) {
-    return name;
+  // If the "name" field looks like a real name (not a URL), clean and return
+  if (rawName && !rawName.startsWith('http') && !rawName.includes('.com') && !rawName.includes('.org')) {
+    return cleanCompanyName(rawName);
   }
+
+  const name = rawName;
 
   // Fallback: clean up a URL into a readable name
   if (name) {
@@ -105,8 +114,18 @@ export function transformCompanies(
 
   if (locationRows && locationMapping) {
     for (const row of locationRows) {
-      const domain = normalizeDomain(getMapped(row, locationMapping, 'domain'));
-      if (!domain) continue;
+      // Try mapped domain first, then check common domain columns directly
+      let domain = normalizeDomain(getMapped(row, locationMapping, 'domain'));
+      if (!domain) {
+        // Fallback: try raw column names that commonly contain domains
+        for (const key of ['Domain', 'domain', 'Website', 'website', 'site', 'Site']) {
+          if (row[key]) { domain = normalizeDomain(row[key]); break; }
+        }
+      }
+      // Also index under alternative domain columns for better matching
+      const altDomain = normalizeDomain(row['Domain'] || row['domain'] || '');
+
+      if (!domain && !altDomain) continue;
 
       const loc: Location = {
         name: toStr(getMapped(row, locationMapping, 'name')),
@@ -126,10 +145,14 @@ export function transformCompanies(
         googleMapsLink: '',
       };
 
-      if (!locationsByDomain.has(domain)) {
-        locationsByDomain.set(domain, []);
+      // Index under both domain variants for maximum match coverage
+      const domainsToIndex = [domain, altDomain].filter(Boolean);
+      for (const d of domainsToIndex) {
+        if (!locationsByDomain.has(d)) {
+          locationsByDomain.set(d, []);
+        }
+        locationsByDomain.get(d)!.push(loc);
       }
-      locationsByDomain.get(domain)!.push(loc);
     }
   }
 

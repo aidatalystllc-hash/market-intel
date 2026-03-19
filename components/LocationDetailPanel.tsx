@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import type { Company, Location } from '@/lib/types';
 import { ACCENT_COLOR } from '@/lib/types';
+import { formatRevenue } from '@/lib/formatters';
 
 /* ── Helpers ── */
 
@@ -380,7 +381,7 @@ export default function LocationDetailPanel({
             <div>
               <div style={labelStyle}>Revenue</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {parentCompany.revenue || '—'}
+                {formatRevenue(parentCompany.revenue)}
               </div>
             </div>
             <div>
