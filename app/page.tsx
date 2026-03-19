@@ -200,7 +200,9 @@ function ShareBanner({ datasetId }: { datasetId: string }) {
 
 function DashboardPage() {
   const searchParams = useSearchParams();
-  const datasetId = searchParams.get('d');
+  const urlDatasetId = searchParams.get('d');
+  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(urlDatasetId);
+  const datasetId = activeDatasetId || urlDatasetId;
   const [companies, setCompanies] = useState<Company[]>([]);
   const [industryName, setIndustryName] = useState('Market');
   const [colorTheme, setColorTheme] = useState<ColorTheme>(COLOR_THEMES[0]);
@@ -281,6 +283,10 @@ function DashboardPage() {
         setIndustryName((data.industryName as string) || 'Market');
         if (data.colorTheme) setColorTheme(data.colorTheme as ColorTheme);
         if (data.warnings) setWarnings(data.warnings as string[]);
+        // Store the dataset ID from the loaded data (in case URL param wasn't set)
+        if (data.datasetId && typeof data.datasetId === 'string') {
+          setActiveDatasetId(data.datasetId);
+        }
         // Show tour on first visit only
         if (!localStorage.getItem('marketintel_tour_seen')) {
           setTimeout(() => setTourOpen(true), 800);
