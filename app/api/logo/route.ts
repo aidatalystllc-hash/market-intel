@@ -23,31 +23,40 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  try {
-    // Try Clearbit Logo API
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
+  // Try multiple logo sources in order
+  const sources = [
+    // Google's favicon service (most reliable, always available)
+    `https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=128`,
+    // Favicone (backup)
+    `https://favicone.com/${cleanDomain}?s=128`,
+  ];
 
-    const res = await fetch(
-      `https://logo.clearbit.com/${cleanDomain}?size=128`,
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
+  for (const url of sources) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
 
-    if (res.ok) {
-      const buffer = await res.arrayBuffer();
-      return new NextResponse(buffer, {
-        headers: {
-          'Content-Type': res.headers.get('content-type') || 'image/png',
-          'Cache-Control': 'public, max-age=604800',
-        },
-      });
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        // Check if we got a real image (not a tiny default favicon)
+        if (buffer.byteLength > 100) {
+          return new NextResponse(buffer, {
+            headers: {
+              'Content-Type': res.headers.get('content-type') || 'image/png',
+              'Cache-Control': 'public, max-age=604800',
+            },
+          });
+        }
+      }
+    } catch {
+      continue;
     }
-  } catch {
-    // Clearbit failed or timed out — fall through to fallback
   }
 
-  // Fallback: colored circle with first letter
+  // Fallback: colored circle with first letter of company name (not domain)
   const letter = cleanDomain.charAt(0).toUpperCase();
   const color = getColorForDomain(cleanDomain);
 
@@ -64,7 +73,6 @@ function generateFallbackSVG(letter: string, bgColor: string): string {
 }
 
 function getColorForDomain(domain: string): string {
-  // Simple hash to pick a consistent color
   let hash = 0;
   for (let i = 0; i < domain.length; i++) {
     hash = domain.charCodeAt(i) + ((hash << 5) - hash);
