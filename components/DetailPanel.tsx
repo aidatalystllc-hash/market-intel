@@ -758,123 +758,75 @@ export default function DetailPanel({
                 icon="\ud83c\udf10"
               />
             )}
-            <button
-              onClick={async () => {
-                if (enriching || !company.domain) return;
-                setEnriching(true);
-                setEnrichMsg('');
-                try {
-                  const res = await fetch('/api/enrich', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: `https://${company.domain}`, type: 'company', domain: company.domain }),
-                  });
-                  const data = await res.json();
-                  if (data.error) {
-                    // Check for missing Firecrawl API key
-                    const errLower = (data.error as string).toLowerCase();
-                    if (errLower.includes('firecrawl') || errLower.includes('api key') || res.status === 403) {
-                      setEnrichMsg('Enrichment requires a Firecrawl API key. Contact your administrator.');
-                    } else {
-                      setEnrichMsg(data.error);
+            {/* Enrich options */}
+            <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Enrich from website
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              {([
+                { key: 'contacts', label: '📞 Contacts', desc: 'Phone, email, social' },
+                { key: 'services', label: '🏷️ Services', desc: 'Offerings & pricing' },
+                { key: 'overview', label: '🏢 Overview', desc: 'About & leadership' },
+                { key: 'reviews', label: '⭐ Sentiment', desc: 'Customer feedback' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  disabled={enriching}
+                  onClick={async () => {
+                    if (enriching || !company.domain) return;
+                    setEnriching(true);
+                    setEnrichMsg(`Searching ${opt.label.slice(2)}...`);
+                    try {
+                      const res = await fetch('/api/enrich', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ domain: company.domain, enrichType: opt.key }),
+                      });
+                      const data = await res.json();
+                      if (data.error) {
+                        setEnrichMsg(data.error);
+                      } else if (data.enrichedData && Object.keys(data.enrichedData).filter(k => !k.startsWith('_') && data.enrichedData[k]).length > 0) {
+                        setEnrichedData(data.enrichedData);
+                        setEnrichMsg('');
+                      } else {
+                        setEnrichMsg('No data found for this category.');
+                      }
+                    } catch {
+                      setEnrichMsg('Enrichment failed. Try again.');
+                    } finally {
+                      setEnriching(false);
                     }
-                  } else if (data.enrichedData) {
-                    const fields = Object.keys(data.enrichedData).filter(k => data.enrichedData[k]);
-                    if (fields.length > 0) {
-                      setEnrichedData(data.enrichedData);
-                      setEnrichMsg(`Enriched! Found: ${fields.join(', ')}`);
-                    } else {
-                      setEnrichMsg('No additional data found.');
-                    }
-                  } else {
-                    setEnrichMsg('No additional data found.');
-                  }
-                } catch {
-                  setEnrichMsg('Could not enrich at this time.');
-                } finally {
-                  setEnriching(false);
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '9px 0',
-                border: '1px solid var(--acc)',
-                borderRadius: 6,
-                background: ACCENT_COLOR + '0a',
-                color: ACCENT_COLOR,
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: "'Syne', system-ui, sans-serif",
-                cursor: enriching ? 'wait' : 'pointer',
-                letterSpacing: '0.02em',
-                transition: 'background 0.15s',
-                opacity: enriching ? 0.6 : 1,
-              }}
-              onMouseEnter={(e) => {
-                if (!enriching) e.currentTarget.style.background = ACCENT_COLOR + '1a';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = ACCENT_COLOR + '0a';
-              }}
-            >
-              {enriching ? '⟳ Enriching...' : '⟳ Enrich Company'}
-            </button>
+                  }}
+                  style={{
+                    padding: '8px 6px',
+                    border: '1px solid var(--bd)',
+                    borderRadius: 5,
+                    background: 'var(--bg3)',
+                    cursor: enriching ? 'wait' : 'pointer',
+                    opacity: enriching ? 0.5 : 1,
+                    transition: 'all 0.15s',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { if (!enriching) { e.currentTarget.style.borderColor = ACCENT_COLOR; e.currentTarget.style.background = 'var(--bg4)'; } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--bd)'; e.currentTarget.style.background = 'var(--bg3)'; }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx)', marginBottom: 1 }}>{opt.label}</div>
+                  <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
             {enrichMsg && (
-              <div style={{ fontSize: 10, color: enrichedData ? '#1a7040' : 'var(--tx2)', marginTop: 4, textAlign: 'center' }}>{enrichMsg}</div>
+              <div style={{ fontSize: 10, color: enrichedData ? '#1a7040' : 'var(--tx2)', marginTop: 6, textAlign: 'center' }}>{enrichMsg}</div>
             )}
           </div>
         </Section>
 
         {/* Enriched Data — shown inline after enrichment */}
-        {enrichedData && Object.keys(enrichedData).length > 0 && (
+        {enrichedData && Object.keys(enrichedData).filter(k => !k.startsWith('_')).length > 0 && (
           <Section title="Enriched from Website">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {!!enrichedData.phone && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>📞</span>
-                  <a href={`tel:${String(enrichedData.phone).replace(/[^\d+]/g, '')}`} style={{ fontSize: 12, color: 'var(--acc)', textDecoration: 'none', fontWeight: 500 }}>
-                    {String(enrichedData.phone)}
-                  </a>
-                </div>
-              )}
-              {!!enrichedData.email && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>✉️</span>
-                  <a href={`mailto:${String(enrichedData.email)}`} style={{ fontSize: 12, color: 'var(--acc)', textDecoration: 'none', fontWeight: 500 }}>
-                    {String(enrichedData.email)}
-                  </a>
-                </div>
-              )}
-              {!!enrichedData.services && (
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>SERVICES FOUND</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                    {String(enrichedData.services).split(',').filter(s => s.trim().length > 1).slice(0, 10).map((s: string) => (
-                      <span key={s} style={{
-                        fontSize: 9, padding: '2px 6px', borderRadius: 3,
-                        background: 'rgba(176,125,16,.08)', color: '#b07d10',
-                        border: '1px solid rgba(176,125,16,.2)',
-                        fontFamily: "'JetBrains Mono', monospace",
-                      }}>{s.trim()}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!!enrichedData.hours && (
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>HOURS</div>
-                  <div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(enrichedData.hours).slice(0, 200)}</div>
-                </div>
-              )}
-              {!!enrichedData.description && (
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>FROM WEBSITE</div>
-                  <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.6 }}>
-                    {String(enrichedData.description).slice(0, 250)}
-                  </div>
-                </div>
-              )}
-              <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, fontStyle: 'italic' }}>
+              <EnrichedFields data={enrichedData} />
+              <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>
                 Enriched {new Date().toLocaleTimeString()}
               </div>
             </div>
@@ -883,6 +835,165 @@ export default function DetailPanel({
       </div>
     </div>
   );
+}
+
+/* ── Enriched Data Display ── */
+
+function EnrichedLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+      {children}
+    </div>
+  );
+}
+
+function EnrichedFields({ data }: { data: Record<string, unknown> }) {
+  const items: React.ReactNode[] = [];
+
+  // Contact info
+  if (data.phone) items.push(
+    <div key="phone" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 14 }}>📞</span>
+      <a href={`tel:${String(data.phone).replace(/[^\d+]/g, '')}`} style={{ fontSize: 12, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500 }}>{String(data.phone)}</a>
+    </div>
+  );
+  if (data.email) items.push(
+    <div key="email" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 14 }}>✉️</span>
+      <a href={`mailto:${String(data.email)}`} style={{ fontSize: 12, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500 }}>{String(data.email)}</a>
+    </div>
+  );
+  if (data.address) items.push(
+    <div key="address" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 14 }}>📍</span>
+      <span style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.address)}</span>
+    </div>
+  );
+
+  // Social links
+  if (data.social && typeof data.social === 'object') {
+    const social = data.social as Record<string, string>;
+    const links = Object.entries(social).filter(([, v]) => v);
+    if (links.length > 0) items.push(
+      <div key="social">
+        <EnrichedLabel>Social Media</EnrichedLabel>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {links.map(([platform, url]) => (
+            <a key={platform} href={String(url)} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 10, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500, textTransform: 'capitalize' }}>
+              {platform} ↗
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Services
+  if (data.services) {
+    const svcs = Array.isArray(data.services) ? data.services : String(data.services).split(',');
+    items.push(
+      <div key="services">
+        <EnrichedLabel>Services</EnrichedLabel>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {svcs.filter((s: string) => String(s).trim().length > 1).slice(0, 12).map((s: string, i: number) => (
+            <span key={i} style={{
+              fontSize: 9, padding: '2px 6px', borderRadius: 3,
+              background: 'rgba(176,125,16,.08)', color: '#b07d10',
+              border: '1px solid rgba(176,125,16,.2)',
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>{String(s).trim()}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Pricing
+  if (data.pricing && Array.isArray(data.pricing) && data.pricing.length > 0) {
+    items.push(
+      <div key="pricing">
+        <EnrichedLabel>Pricing</EnrichedLabel>
+        {(data.pricing as { service?: string; price?: string; details?: string }[]).slice(0, 5).map((p, i) => (
+          <div key={i} style={{ fontSize: 11, color: 'var(--tx2)', marginBottom: 2 }}>
+            <strong style={{ color: 'var(--tx)' }}>{p.service || 'Service'}</strong>: {p.price || '—'} {p.details ? `(${p.details})` : ''}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Leadership
+  if (data.leadership && Array.isArray(data.leadership) && data.leadership.length > 0) {
+    items.push(
+      <div key="leadership">
+        <EnrichedLabel>Leadership</EnrichedLabel>
+        {(data.leadership as { name?: string; title?: string }[]).slice(0, 5).map((p, i) => (
+          <div key={i} style={{ fontSize: 11, marginBottom: 2 }}>
+            <strong style={{ color: 'var(--tx)' }}>{p.name}</strong> <span style={{ color: 'var(--tx2)' }}>— {p.title}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Description / Specialties / Differentiators
+  if (data.specialties) items.push(
+    <div key="specialties"><EnrichedLabel>Specialties</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(data.specialties).slice(0, 200)}</div></div>
+  );
+  if (data.differentiators) items.push(
+    <div key="diff"><EnrichedLabel>Differentiators</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(data.differentiators).slice(0, 200)}</div></div>
+  );
+  if (data.certifications) items.push(
+    <div key="certs"><EnrichedLabel>Certifications</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.certifications)}</div></div>
+  );
+  if (data.description) items.push(
+    <div key="desc"><EnrichedLabel>About</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(data.description).slice(0, 250)}</div></div>
+  );
+
+  // Customer sentiment
+  if (data.sentiment) items.push(
+    <div key="sentiment" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <EnrichedLabel>Sentiment</EnrichedLabel>
+      <span style={{ fontSize: 11, fontWeight: 600, color: data.sentiment === 'positive' ? '#1a7040' : data.sentiment === 'negative' ? '#b03a1a' : '#b07d10' }}>
+        {String(data.sentiment).toUpperCase()}
+      </span>
+    </div>
+  );
+  if (data.highlights && Array.isArray(data.highlights)) items.push(
+    <div key="highlights"><EnrichedLabel>What Customers Love</EnrichedLabel>
+      {(data.highlights as string[]).slice(0, 5).map((h, i) => (
+        <div key={i} style={{ fontSize: 11, color: '#1a7040', marginBottom: 1 }}>✓ {h}</div>
+      ))}
+    </div>
+  );
+  if (data.concerns && Array.isArray(data.concerns) && data.concerns.length > 0) items.push(
+    <div key="concerns"><EnrichedLabel>Concerns</EnrichedLabel>
+      {(data.concerns as string[]).slice(0, 3).map((c, i) => (
+        <div key={i} style={{ fontSize: 11, color: '#b03a1a', marginBottom: 1 }}>⚠ {c}</div>
+      ))}
+    </div>
+  );
+  if (data.sample_quotes && Array.isArray(data.sample_quotes)) items.push(
+    <div key="quotes"><EnrichedLabel>Customer Quotes</EnrichedLabel>
+      {(data.sample_quotes as string[]).slice(0, 3).map((q, i) => (
+        <div key={i} style={{ fontSize: 11, color: 'var(--tx2)', fontStyle: 'italic', marginBottom: 3, lineHeight: 1.5, paddingLeft: 8, borderLeft: '2px solid var(--bd)' }}>&ldquo;{q}&rdquo;</div>
+      ))}
+    </div>
+  );
+
+  // Hours
+  if (data.hours) items.push(
+    <div key="hours"><EnrichedLabel>Hours</EnrichedLabel><div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(data.hours).slice(0, 200)}</div></div>
+  );
+
+  // Note (fallback mode)
+  if (data._note) items.push(
+    <div key="note" style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>{String(data._note)}</div>
+  );
+
+  if (items.length === 0) return <div style={{ fontSize: 11, color: 'var(--tx3)' }}>No structured data found.</div>;
+  return <>{items}</>;
 }
 
 /* ── Sub-components ── */
