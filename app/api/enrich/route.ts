@@ -214,12 +214,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Record usage for cost tracking
-    let costInfo = { estimated: 0, remaining: budgetRemaining };
+    let costInfo = { estimated: 0, remaining: budgetRemaining, trackingError: '' };
     if (datasetId) {
       try {
         const { recordUsage, estimateCost } = await import('@/lib/usageTracker');
-        const firecrawlCreditsUsed = 1; // Each scrape = 1 credit
+        const firecrawlCreditsUsed = 1;
         const cost = estimateCost(firecrawlCreditsUsed, claudeInputTokens, claudeOutputTokens);
+        console.log(`Recording usage for ${datasetId}: firecrawl=${firecrawlCreditsUsed}, claude=${claudeInputTokens}+${claudeOutputTokens}, cost=$${cost.toFixed(4)}`);
         const updatedUsage = await recordUsage(datasetId, {
           enrichType: enrichType || 'unknown',
           domain,
@@ -230,10 +231,16 @@ export async function POST(req: NextRequest) {
         costInfo = {
           estimated: cost,
           remaining: Math.max(0, updatedUsage.capUsd - updatedUsage.totalEstimatedCost),
+          trackingError: '',
         };
-      } catch {
-        // Usage tracking failed — non-fatal
+        console.log(`Usage recorded. Total: $${updatedUsage.totalEstimatedCost.toFixed(4)}, calls: ${updatedUsage.totalCalls}`);
+      } catch (trackErr) {
+        const msg = trackErr instanceof Error ? trackErr.message : String(trackErr);
+        console.error('Usage tracking failed:', msg);
+        costInfo.trackingError = msg;
       }
+    } else {
+      console.log('No datasetId provided — usage not tracked');
     }
 
     return NextResponse.json({
@@ -245,6 +252,8 @@ export async function POST(req: NextRequest) {
         thisCall: `$${costInfo.estimated.toFixed(4)}`,
         remaining: `$${costInfo.remaining.toFixed(2)}`,
       },
+      datasetId: datasetId || null,
+      debug: costInfo.trackingError ? { trackingError: costInfo.trackingError } : undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
