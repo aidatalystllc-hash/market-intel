@@ -161,7 +161,8 @@ export default function DashboardPage() {
         setIndustryName((data.industryName as string) || 'Market');
         if (data.colorTheme) setColorTheme(data.colorTheme as ColorTheme);
         if (data.warnings) setWarnings(data.warnings as string[]);
-        if (data.showTour) {
+        // Only show tour on first visit — not on every refresh
+        if (data.showTour && !localStorage.getItem('marketintel_tour_seen')) {
           setTimeout(() => setTourOpen(true), 800);
         }
         setHasData(true);
@@ -425,7 +426,7 @@ export default function DashboardPage() {
       />
 
       {/* ── GUIDED TOUR ── */}
-      <GuidedTour isOpen={tourOpen} onClose={() => setTourOpen(false)} />
+      <GuidedTour isOpen={tourOpen} onClose={() => { setTourOpen(false); localStorage.setItem('marketintel_tour_seen', '1'); }} />
     </div>
   );
 }
