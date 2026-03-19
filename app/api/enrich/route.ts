@@ -213,34 +213,73 @@ export async function POST(req: NextRequest) {
       enrichedData._note = 'Basic extraction only. Add an Anthropic API key for AI-powered enrichment.';
     }
 
-    // Record usage for cost tracking
-    let costInfo = { estimated: 0, remaining: budgetRemaining, trackingError: '' };
+    // Record usage for cost tracking — inline to avoid module import issues
+    let costInfo = { estimated: 0, remaining: budgetRemaining, trackingError: '', saved: false };
     if (datasetId) {
       try {
-        const { recordUsage, estimateCost } = await import('@/lib/usageTracker');
+        const { put: blobPut, list: blobList } = await import('@vercel/blob');
         const firecrawlCreditsUsed = 1;
-        const cost = estimateCost(firecrawlCreditsUsed, claudeInputTokens, claudeOutputTokens);
-        console.log(`Recording usage for ${datasetId}: firecrawl=${firecrawlCreditsUsed}, claude=${claudeInputTokens}+${claudeOutputTokens}, cost=$${cost.toFixed(4)}`);
-        const updatedUsage = await recordUsage(datasetId, {
+        const FIRECRAWL_COST = 0.0053;
+        const CLAUDE_IN_COST = 0.00025 / 1000;
+        const CLAUDE_OUT_COST = 0.00125 / 1000;
+        const cost = firecrawlCreditsUsed * FIRECRAWL_COST + claudeInputTokens * CLAUDE_IN_COST + claudeOutputTokens * CLAUDE_OUT_COST;
+
+        // Load existing usage
+        let usage = { totalEstimatedCost: 0, totalCalls: 0, totalFirecrawlCredits: 0, history: [] as unknown[] };
+        try {
+          const { blobs } = await blobList({ prefix: `usage/${datasetId}` });
+          if (blobs.length > 0) {
+            const dlUrl = blobs[0].downloadUrl || blobs[0].url;
+            const existing = await fetch(dlUrl);
+            if (existing.ok) {
+              usage = await existing.json();
+            }
+          }
+        } catch (loadErr) {
+          console.error('Usage load failed:', loadErr);
+        }
+
+        // Update
+        usage.totalEstimatedCost += cost;
+        usage.totalCalls += 1;
+        usage.totalFirecrawlCredits += firecrawlCreditsUsed;
+        usage.history.push({
+          timestamp: new Date().toISOString(),
           enrichType: enrichType || 'unknown',
           domain,
           firecrawlCredits: firecrawlCreditsUsed,
           claudeInputTokens,
           claudeOutputTokens,
+          estimatedCost: cost,
         });
+        if (usage.history.length > 100) usage.history = usage.history.slice(-100);
+
+        // Save
+        const savePayload = JSON.stringify({
+          datasetId,
+          ...usage,
+          capUsd: parseFloat(process.env.ENRICHMENT_CAP_USD || '3'),
+          updatedAt: new Date().toISOString(),
+        });
+
+        const saveResult = await blobPut(`usage/${datasetId}.json`, savePayload, {
+          access: 'private',
+          contentType: 'application/json',
+          addRandomSuffix: false,
+        });
+
         costInfo = {
           estimated: cost,
-          remaining: Math.max(0, updatedUsage.capUsd - updatedUsage.totalEstimatedCost),
+          remaining: Math.max(0, (parseFloat(process.env.ENRICHMENT_CAP_USD || '3')) - usage.totalEstimatedCost),
           trackingError: '',
+          saved: true,
         };
-        console.log(`Usage recorded. Total: $${updatedUsage.totalEstimatedCost.toFixed(4)}, calls: ${updatedUsage.totalCalls}`);
+        console.log(`Usage saved: ${saveResult.url}, total=$${usage.totalEstimatedCost.toFixed(4)}, calls=${usage.totalCalls}`);
       } catch (trackErr) {
         const msg = trackErr instanceof Error ? trackErr.message : String(trackErr);
         console.error('Usage tracking failed:', msg);
         costInfo.trackingError = msg;
       }
-    } else {
-      console.log('No datasetId provided — usage not tracked');
     }
 
     return NextResponse.json({
@@ -253,7 +292,10 @@ export async function POST(req: NextRequest) {
         remaining: `$${costInfo.remaining.toFixed(2)}`,
       },
       datasetId: datasetId || null,
-      debug: costInfo.trackingError ? { trackingError: costInfo.trackingError } : undefined,
+      debug: {
+        trackingSaved: costInfo.saved,
+        trackingError: costInfo.trackingError || null,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
