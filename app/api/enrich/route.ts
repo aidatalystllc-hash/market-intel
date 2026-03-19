@@ -266,6 +266,7 @@ export async function POST(req: NextRequest) {
           access: 'private',
           contentType: 'application/json',
           addRandomSuffix: false,
+          allowOverwrite: true,
         });
 
         costInfo = {

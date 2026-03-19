@@ -125,6 +125,7 @@ export async function recordUsage(
     access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
   console.log('Usage saved to blob:', saveResult.url);
 
