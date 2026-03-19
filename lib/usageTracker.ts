@@ -120,16 +120,13 @@ export async function recordUsage(
     usage.history = usage.history.slice(-100);
   }
 
-  // Save back to Vercel Blob
-  try {
-    await put(`usage/${datasetId}.json`, JSON.stringify(usage), {
-      access: 'private',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-    });
-  } catch (err) {
-    console.error('Failed to save usage data:', err);
-  }
+  // Save back to Vercel Blob — let errors propagate so caller can report them
+  const saveResult = await put(`usage/${datasetId}.json`, JSON.stringify(usage), {
+    access: 'private',
+    contentType: 'application/json',
+    addRandomSuffix: false,
+  });
+  console.log('Usage saved to blob:', saveResult.url);
 
   return usage;
 }
