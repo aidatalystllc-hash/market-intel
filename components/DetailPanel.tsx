@@ -850,6 +850,9 @@ export default function DetailPanel({
             {enrichMsg && (
               <div style={{ fontSize: 10, color: enrichedData ? '#1a7040' : 'var(--tx2)', marginTop: 6, textAlign: 'center' }}>{enrichMsg}</div>
             )}
+            <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 8, textAlign: 'center', lineHeight: 1.4, fontStyle: 'italic' }}>
+              Limit: ~5 enrichments per minute. Wait a few seconds between clicks for best results.
+            </div>
           </div>
         </Section>
 
