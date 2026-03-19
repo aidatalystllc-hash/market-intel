@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import type { Company, FilterState, ViewMode, ColorTheme, SortKey } from '@/lib/types';
@@ -107,7 +108,21 @@ function EmptyState() {
   );
 }
 
-export default function DashboardPage() {
+export default function Page() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen flex items-center justify-center" style={{ background: '#f6f3ee' }}>
+        <div className="animate-pulse text-xl" style={{ color: '#3d3831' }}>Loading...</div>
+      </div>
+    }>
+      <DashboardPage />
+    </Suspense>
+  );
+}
+
+function DashboardPage() {
+  const searchParams = useSearchParams();
+  const datasetId = searchParams.get('d');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [industryName, setIndustryName] = useState('Market');
   const [colorTheme, setColorTheme] = useState<ColorTheme>(COLOR_THEMES[0]);
@@ -138,20 +153,36 @@ export default function DashboardPage() {
     }
   }, [hasData]);
 
-  // Load data: try local first, then fetch from server (for shared links)
+  // Load data: if ?d= param exists, load that dataset from server.
+  // Otherwise try local storage, then fall back to latest server dataset.
   useEffect(() => {
     (async () => {
       try {
-        // Try IndexedDB first (admin just uploaded)
-        let data = await loadData() as Record<string, unknown> | null;
+        let data: Record<string, unknown> | null = null;
 
-        // Fallback to sessionStorage
+        if (datasetId) {
+          // Shared link — load specific dataset from server
+          try {
+            const res = await fetch(`/api/load-data?d=${encodeURIComponent(datasetId)}`);
+            const serverData = await res.json();
+            if (serverData.data && serverData.data.companies) {
+              data = serverData.data;
+            }
+          } catch {
+            // Server not available
+          }
+        }
+
+        // No dataset param or server failed — try local storage
+        if (!data) {
+          data = await loadData() as Record<string, unknown> | null;
+        }
         if (!data) {
           const raw = sessionStorage.getItem('marketintel_data');
           if (raw) data = JSON.parse(raw);
         }
 
-        // Fallback to server (Vercel Blob) — this is how shared links work
+        // Last resort — load latest dataset from server
         if (!data) {
           try {
             const res = await fetch('/api/load-data');
@@ -159,9 +190,7 @@ export default function DashboardPage() {
             if (serverData.data && serverData.data.companies) {
               data = serverData.data;
             }
-          } catch {
-            // Server not available — that's OK
-          }
+          } catch { /* OK */ }
         }
 
         if (!data) {
@@ -185,7 +214,8 @@ export default function DashboardPage() {
         setHasData(false);
       }
     })();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId]);
 
   // Keyboard shortcuts
   useEffect(() => {

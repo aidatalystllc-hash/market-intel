@@ -344,9 +344,10 @@ export default function AdminPage() {
         showTour: true,
       });
 
-      // Also save to server (Vercel Blob) so the link can be shared with clients
+      // Save to server (Vercel Blob) with unique dataset ID for sharing
+      let datasetId = '';
       try {
-        await fetch('/api/save-data', {
+        const saveRes = await fetch('/api/save-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -355,12 +356,16 @@ export default function AdminPage() {
             warnings,
           }),
         });
+        const saveData = await saveRes.json();
+        if (saveData.datasetId) {
+          datasetId = saveData.datasetId;
+        }
       } catch (e) {
         console.warn('Could not save to server (link sharing may not work):', e);
-        // Non-fatal — local storage still works
       }
 
-      router.push('/');
+      // Navigate to the map with the dataset ID in the URL
+      router.push(datasetId ? `/?d=${datasetId}` : '/');
     },
     [industryName, colorTheme, router]
   );

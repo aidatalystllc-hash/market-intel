@@ -1,46 +1,59 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { list } from '@vercel/blob';
 
+export const dynamic = 'force-dynamic';
+
 /**
- * Load the latest saved company data from Vercel Blob.
- * This is the public endpoint — anyone with the link can view the map.
+ * Load a specific dataset by ID, or the latest dataset if no ID provided.
+ * Public endpoint — anyone with the link can view the map.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    // List blobs to find our data file
-    const { blobs } = await list({ prefix: 'marketintel-data' });
+    const datasetId = req.nextUrl.searchParams.get('d');
+
+    if (datasetId) {
+      // Load a specific dataset by ID
+      const { blobs } = await list({ prefix: `datasets/${datasetId}` });
+
+      if (blobs.length === 0) {
+        return NextResponse.json({ data: null, message: `Dataset "${datasetId}" not found.` });
+      }
+
+      const res = await fetch(blobs[0].url);
+      if (!res.ok) {
+        return NextResponse.json({ data: null, message: 'Could not load dataset.' });
+      }
+
+      const data = await res.json();
+      return NextResponse.json({ data, uploadedAt: blobs[0].uploadedAt });
+    }
+
+    // No ID — load the most recent dataset
+    const { blobs } = await list({ prefix: 'datasets/' });
 
     if (blobs.length === 0) {
       return NextResponse.json({ data: null, message: 'No data uploaded yet.' });
     }
 
-    // Get the most recent blob
     const latest = blobs.sort((a, b) =>
       new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
     )[0];
 
-    // Fetch the blob content
     const res = await fetch(latest.url);
     if (!res.ok) {
       return NextResponse.json({ data: null, message: 'Could not load data.' });
     }
 
     const data = await res.json();
-
-    return NextResponse.json({
-      data,
-      blobUrl: latest.url,
-      uploadedAt: latest.uploadedAt,
-    });
+    return NextResponse.json({ data, uploadedAt: latest.uploadedAt });
   } catch (err) {
     console.error('Load data error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
 
-    // If Vercel Blob is not configured, fall back gracefully
     if (message.includes('BLOB_READ_WRITE_TOKEN') || message.includes('not configured')) {
       return NextResponse.json({
         data: null,
-        message: 'Server storage not configured. Data is stored locally in your browser.',
+        message: 'Server storage not configured.',
         fallbackToLocal: true,
       });
     }

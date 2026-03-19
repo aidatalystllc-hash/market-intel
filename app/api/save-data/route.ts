@@ -4,8 +4,8 @@ import { put } from '@vercel/blob';
 export const maxDuration = 30;
 
 /**
- * Save processed company data to Vercel Blob so it can be shared via URL.
- * Only callable from the admin upload flow.
+ * Save processed company data to Vercel Blob with a unique dataset ID.
+ * Each upload gets its own ID so multiple datasets can coexist.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -16,23 +16,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No companies data provided.' }, { status: 400 });
     }
 
+    // Generate a unique dataset ID: industry slug + short random string
+    const slug = (industryName || 'market')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 30);
+    const rand = Math.random().toString(36).slice(2, 8);
+    const datasetId = `${slug}-${rand}`;
+
     const payload = JSON.stringify({
       companies,
       industryName: industryName || 'Market',
       warnings: warnings || [],
+      datasetId,
       savedAt: new Date().toISOString(),
     });
 
-    // Save to Vercel Blob
-    const blob = await put('marketintel-data.json', payload, {
+    // Save to Vercel Blob with unique filename
+    const blob = await put(`datasets/${datasetId}.json`, payload, {
       access: 'public',
       contentType: 'application/json',
-      addRandomSuffix: false, // Always overwrite the same file
+      addRandomSuffix: false,
     });
 
     return NextResponse.json({
       success: true,
+      datasetId,
       url: blob.url,
+      shareLink: `/?d=${datasetId}`,
       size: payload.length,
       companiesCount: companies.length,
     });
