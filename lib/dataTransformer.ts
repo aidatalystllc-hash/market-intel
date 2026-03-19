@@ -68,7 +68,8 @@ function detectPE(row: Record<string, unknown>, mapping: ColumnMapping): {
     && !peFirmLower.startsWith('http');
 
   const isPE = hasRealType || hasRealFirm;
-  const peFirm = hasRealFirm ? peFirmRaw : '';
+  // Strip URLs from PE firm name (e.g., "Main Post Partners (http://www.mainpostpartners.com)" → "Main Post Partners")
+  const peFirm = hasRealFirm ? peFirmRaw.replace(/\s*\(https?:\/\/[^)]+\)/g, '').trim() : '';
   const peType = hasRealType ? peTypeRaw : (isPE ? 'Platform' : '');
 
   return { isPE, peFirm, peType };

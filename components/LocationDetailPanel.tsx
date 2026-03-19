@@ -97,10 +97,10 @@ interface LocationDetailPanelProps {
 }
 
 const DISTANCE_FILTERS = [
-  { label: '1 mi', miles: 1 },
-  { label: '5 mi', miles: 5 },
-  { label: '10 mi', miles: 10 },
-  { label: '25 mi', miles: 25 },
+  { label: '< 1 mi', miles: 1.1 },
+  { label: '< 5 mi', miles: 5.1 },
+  { label: '< 10 mi', miles: 10.1 },
+  { label: '< 25 mi', miles: 25.1 },
   { label: 'All', miles: Infinity },
 ];
 
