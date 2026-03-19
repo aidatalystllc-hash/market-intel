@@ -96,13 +96,16 @@ export default function DetailPanel({
   const [enrichedData, setEnrichedData] = useState<Record<string, unknown> | null>(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
 
-  // Animate platform score bar on mount / company change
+  // Reset state on company change
   useEffect(() => {
     if (!company) return;
     setAnimatedScore(0);
+    setEnriching(false);
+    setEnrichMsg('');
+    setEnrichedData(null);
     const timer = setTimeout(() => setAnimatedScore(company.score), 60);
     return () => clearTimeout(timer);
-  }, [company?.score, company]);
+  }, [company?.id, company?.score, company]);
 
   if (!company) {
     return (
@@ -823,30 +826,30 @@ export default function DetailPanel({
         </Section>
 
         {/* Enriched Data — shown inline after enrichment */}
-        {enrichedData && (
-          <Section title="Enriched Data">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {!!enrichedData.description && (
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 2, fontWeight: 500 }}>DESCRIPTION</div>
-                  <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>
-                    {String(enrichedData.description).slice(0, 300)}
-                  </div>
+        {enrichedData && Object.keys(enrichedData).length > 0 && (
+          <Section title="Enriched from Website">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {!!enrichedData.phone && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>📞</span>
+                  <a href={`tel:${String(enrichedData.phone).replace(/[^\d+]/g, '')}`} style={{ fontSize: 12, color: 'var(--acc)', textDecoration: 'none', fontWeight: 500 }}>
+                    {String(enrichedData.phone)}
+                  </a>
                 </div>
               )}
-              {!!enrichedData.phone && (
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 2, fontWeight: 500 }}>PHONE</div>
-                  <a href={`tel:${String(enrichedData.phone).replace(/[^\d+]/g, '')}`} style={{ fontSize: 11, color: 'var(--acc)', textDecoration: 'none' }}>
-                    {String(enrichedData.phone)}
+              {!!enrichedData.email && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>✉️</span>
+                  <a href={`mailto:${String(enrichedData.email)}`} style={{ fontSize: 12, color: 'var(--acc)', textDecoration: 'none', fontWeight: 500 }}>
+                    {String(enrichedData.email)}
                   </a>
                 </div>
               )}
               {!!enrichedData.services && (
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 2, fontWeight: 500 }}>SERVICES</div>
+                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>SERVICES FOUND</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                    {String(enrichedData.services).split(',').map((s: string) => (
+                    {String(enrichedData.services).split(',').filter(s => s.trim().length > 1).slice(0, 10).map((s: string) => (
                       <span key={s} style={{
                         fontSize: 9, padding: '2px 6px', borderRadius: 3,
                         background: 'rgba(176,125,16,.08)', color: '#b07d10',
@@ -859,18 +862,20 @@ export default function DetailPanel({
               )}
               {!!enrichedData.hours && (
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 2, fontWeight: 500 }}>HOURS</div>
-                  <div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(enrichedData.hours)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>HOURS</div>
+                  <div style={{ fontSize: 11, color: 'var(--tx2)' }}>{String(enrichedData.hours).slice(0, 200)}</div>
                 </div>
               )}
-              {!!enrichedData.about && (
+              {!!enrichedData.description && (
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 2, fontWeight: 500 }}>ABOUT</div>
-                  <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(enrichedData.about).slice(0, 300)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 3, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>FROM WEBSITE</div>
+                  <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.6 }}>
+                    {String(enrichedData.description).slice(0, 250)}
+                  </div>
                 </div>
               )}
-              <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 4 }}>
-                Last enriched: {new Date().toLocaleString()}
+              <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, fontStyle: 'italic' }}>
+                Enriched {new Date().toLocaleTimeString()}
               </div>
             </div>
           </Section>

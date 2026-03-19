@@ -91,18 +91,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If Claude didn't produce structured data, extract basic info from the markdown
+    // If Claude didn't produce structured data, extract clean info from markdown
     if (Object.keys(enrichedData).length === 0) {
-      // Simple regex-based extraction as fallback
-      const phoneMatch = markdown.match(/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-      const descriptionExcerpt = markdown.replace(/[#*_\[\]()]/g, '').slice(0, 500).trim();
+      // Clean the markdown: remove URLs, image refs, HTML artifacts, nav text
+      const cleaned = markdown
+        .replace(/https?:\/\/[^\s)]+/g, '') // remove URLs
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // remove markdown images
+        .replace(/\[[^\]]*\]\([^)]*\)/g, '') // remove markdown links
+        .replace(/<[^>]+>/g, '') // remove HTML tags
+        .replace(/[#*_|]/g, '') // remove markdown formatting
+        .replace(/Skip to (?:content|navigation|main)/gi, '') // remove nav text
+        .replace(/\s+/g, ' ') // collapse whitespace
+        .trim();
 
-      enrichedData = {
-        description: descriptionExcerpt || undefined,
-        phone: phoneMatch?.[0] || undefined,
-        source: 'basic extraction (AI structuring unavailable)',
-      };
+      // Find the first meaningful paragraph (>40 chars, not a menu item)
+      const sentences = cleaned.split(/[.!?]+/).filter((s: string) => s.trim().length > 40);
+      const description = sentences.slice(0, 3).join('. ').trim();
+
+      // Extract phone
+      const phoneMatch = cleaned.match(/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+
+      // Extract email
+      const emailMatch = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+
+      enrichedData = {};
+      if (description && description.length > 20) enrichedData.description = description.slice(0, 300);
+      if (phoneMatch) enrichedData.phone = phoneMatch[0];
+      if (emailMatch) enrichedData.email = emailMatch[0];
     }
+
+    // Remove internal/irrelevant fields before returning
+    delete enrichedData.source;
 
     return NextResponse.json({
       enrichedData,
