@@ -72,18 +72,24 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         items.push({ company: c });
       }
 
-      // Location-level matches (show specific locations that match)
+      // Location-level matches — always show, even if company matched
+      // (so searching "Palm Beach Tan Austin" shows both the company AND the Austin location)
+      const seenLocs = new Set<string>();
       for (const loc of c.locations) {
         const locText = `${loc.name} ${loc.address} ${loc.city} ${loc.state}`.toLowerCase();
-        if (locText.includes(q) && !companyMatch) {
-          items.push({ company: c, locMatch: loc.name || `${loc.city}, ${loc.state}` });
+        if (locText.includes(q)) {
+          const locKey = `${loc.name}|${loc.city}`;
+          if (!seenLocs.has(locKey)) {
+            seenLocs.add(locKey);
+            items.push({ company: c, locMatch: loc.name || `${loc.city}, ${loc.state}` });
+          }
         }
       }
 
-      if (items.length >= 30) break;
+      if (items.length >= 50) break;
     }
 
-    return items.slice(0, 30);
+    return items.slice(0, 50);
   }, [debouncedQuery, companies]);
 
   const handleSelect = useCallback(
