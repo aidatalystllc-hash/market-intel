@@ -879,47 +879,60 @@ function LocationEnrichButton({ domain, enrichType, label, desc, locationName, l
     } finally { setLoading(false); }
   };
 
+  const [expanded, setExpanded] = useState(false);
+  const fieldCount = result ? Object.keys(result).filter(k => !k.startsWith('_') && result[k]).length : 0;
+
   return (
     <div>
-      <button onClick={() => handleEnrich(false)} disabled={loading} style={{
-        width: '100%', padding: '7px 6px', border: '1px solid rgba(26,112,64,0.3)', borderRadius: 5,
-        background: loading ? 'rgba(26,112,64,0.08)' : 'rgba(26,112,64,0.04)',
-        cursor: loading ? 'default' : 'pointer',
-        textAlign: 'left',
-      }}>
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
-            <Spinner color="#1a7040" />
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#1a7040' }}>Searching...</div>
-              <div style={{ fontSize: 8, color: 'var(--tx3)' }}>This may take 15-30 seconds</div>
+      {/* Button OR summary bar */}
+      {!result ? (
+        <button onClick={() => handleEnrich(false)} disabled={loading} style={{
+          width: '100%', padding: '6px', border: '1px solid rgba(26,112,64,0.3)', borderRadius: 5,
+          background: loading ? 'rgba(26,112,64,0.08)' : 'rgba(26,112,64,0.04)',
+          cursor: loading ? 'default' : 'pointer', textAlign: 'left',
+        }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Spinner color="#1a7040" />
+              <span style={{ fontSize: 10, fontWeight: 600, color: '#1a7040' }}>Searching... (15-30s)</span>
             </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#1a7040' }}>{label}</div>
-            <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
-          </>
-        )}
-      </button>
+          ) : (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#1a7040' }}>{label}</div>
+              <div style={{ fontSize: 8, color: 'var(--tx3)' }}>{desc}</div>
+            </>
+          )}
+        </button>
+      ) : (
+        <button onClick={() => setExpanded(!expanded)} style={{
+          width: '100%', padding: '5px 8px', border: '1px solid rgba(26,112,64,0.25)', borderRadius: 5,
+          background: 'rgba(26,112,64,0.06)', cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#1a7040' }}>
+            {label} <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--tx3)' }}>— {fieldCount} fields found</span>
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--tx3)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>&#9660;</span>
+        </button>
+      )}
+      {/* Error */}
       {error && (
-        <div style={{ fontSize: 9, color: '#b03a1a', marginTop: 4, padding: '4px 8px', background: 'rgba(176,58,26,0.04)', border: '1px solid rgba(176,58,26,0.12)', borderRadius: 4, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 9, color: '#b03a1a', marginTop: 3, padding: '3px 6px', background: 'rgba(176,58,26,0.04)', border: '1px solid rgba(176,58,26,0.12)', borderRadius: 4, lineHeight: 1.3 }}>
           {error}
         </div>
       )}
-      {result && (
-        <div style={{ marginTop: 4, padding: 6, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data</span>
+      {/* Collapsible result */}
+      {result && expanded && (
+        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
             {isCached && (
               <>
-                <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
-                <button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
+                <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
+                <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
               </>
             )}
           </div>
           <EnrichedDataRenderer data={result} accentColor="#1a7040" />
-          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic', marginTop: 4 }}>Enriched {new Date().toLocaleTimeString()}</div>
         </div>
       )}
     </div>
@@ -983,47 +996,57 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
     } finally { setLoading(false); }
   };
 
+  const [expanded, setExpanded] = useState(false);
+  const fieldCount = result ? Object.keys(result).filter(k => !k.startsWith('_') && result[k]).length : 0;
+
   return (
     <div>
-      <button onClick={() => handleEnrich(false)} disabled={loading} style={{
-        width: '100%', padding: '7px 6px', border: '1px solid var(--bd)', borderRadius: 5,
-        background: loading ? 'var(--bg4, var(--bg3))' : 'var(--bg3)',
-        cursor: loading ? 'default' : 'pointer',
-        textAlign: 'left',
-      }}>
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
-            <Spinner color="#1a4f96" />
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#1a4f96' }}>Searching...</div>
-              <div style={{ fontSize: 8, color: 'var(--tx3)' }}>This may take 15-30 seconds</div>
+      {!result ? (
+        <button onClick={() => handleEnrich(false)} disabled={loading} style={{
+          width: '100%', padding: '6px', border: '1px solid var(--bd)', borderRadius: 5,
+          background: loading ? 'var(--bg3)' : 'var(--bg3)',
+          cursor: loading ? 'default' : 'pointer', textAlign: 'left',
+        }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Spinner color="#1a4f96" />
+              <span style={{ fontSize: 10, fontWeight: 600, color: '#1a4f96' }}>Searching... (15-30s)</span>
             </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx)' }}>{label}</div>
-            <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
-          </>
-        )}
-      </button>
+          ) : (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tx)' }}>{label}</div>
+              <div style={{ fontSize: 8, color: 'var(--tx3)' }}>{desc}</div>
+            </>
+          )}
+        </button>
+      ) : (
+        <button onClick={() => setExpanded(!expanded)} style={{
+          width: '100%', padding: '5px 8px', border: '1px solid rgba(26,79,150,0.25)', borderRadius: 5,
+          background: 'rgba(26,79,150,0.06)', cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#1a4f96' }}>
+            {label} <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--tx3)' }}>— {fieldCount} fields</span>
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--tx3)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>&#9660;</span>
+        </button>
+      )}
       {error && (
-        <div style={{ fontSize: 9, color: '#b03a1a', marginTop: 4, padding: '4px 8px', background: 'rgba(176,58,26,0.04)', border: '1px solid rgba(176,58,26,0.12)', borderRadius: 4, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 9, color: '#b03a1a', marginTop: 3, padding: '3px 6px', background: 'rgba(176,58,26,0.04)', border: '1px solid rgba(176,58,26,0.12)', borderRadius: 4, lineHeight: 1.3 }}>
           {error}
         </div>
       )}
-      {result && (
-        <div style={{ marginTop: 4, padding: 6, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: '#1a4f96', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>🏢 Company Data</span>
+      {result && expanded && (
+        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
             {isCached && (
               <>
-                <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
-                <button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
+                <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
+                <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
               </>
             )}
           </div>
           <EnrichedDataRenderer data={result} accentColor="#1a4f96" />
-          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic', marginTop: 4 }}>Enriched {new Date().toLocaleTimeString()}</div>
         </div>
       )}
     </div>
