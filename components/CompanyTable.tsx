@@ -40,8 +40,8 @@ const COLUMNS: ColumnDef[] = [
   { key: 'footprint', label: 'Footprint', width: '85px', align: 'center' },
   { key: 'ownership', label: 'Ownership', width: '95px', align: 'center' },
   { key: 'locationCount', label: 'Locations', width: '75px', align: 'right' },
-  { key: 'avgRating', label: 'Avg Rating', width: '80px', align: 'right' },
   { key: 'employeeSize', label: 'Employees', width: '80px', align: 'center' },
+  { key: 'avgRating', label: 'Avg Rating', width: '80px', align: 'right' },
   { key: 'totalReviews', label: 'Reviews', width: '70px', align: 'right' },
   { key: 'totalPhotos', label: 'Photos', width: '65px', align: 'right' },
   { key: 'services', label: 'Services', width: '180px' },
@@ -553,28 +553,10 @@ function VirtualizedBody({
                   {company.locationCount}
                 </div>
 
-                {/* Avg Rating */}
-                <div
-                  style={{
-                    width: COLUMNS[5].width,
-                    flexShrink: 0,
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: company.avgRating != null && company.avgRating >= 4.8
-                      ? '#b07d10'
-                      : 'var(--tx)',
-                    textAlign: 'right',
-                    padding: '0 4px',
-                  }}
-                >
-                  {company.avgRating != null ? company.avgRating.toFixed(1) : '--'}
-                </div>
-
                 {/* Employees */}
                 <div
                   style={{
-                    width: COLUMNS[6].width,
+                    width: COLUMNS[5].width,
                     flexShrink: 0,
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 10,
@@ -588,6 +570,24 @@ function VirtualizedBody({
                   }}
                 >
                   {company.employeeSize || '--'}
+                </div>
+
+                {/* Avg Rating */}
+                <div
+                  style={{
+                    width: COLUMNS[6].width,
+                    flexShrink: 0,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: company.avgRating != null && company.avgRating >= 4.8
+                      ? '#b07d10'
+                      : 'var(--tx)',
+                    textAlign: 'right',
+                    padding: '0 4px',
+                  }}
+                >
+                  {company.avgRating != null ? company.avgRating.toFixed(1) : '--'}
                 </div>
 
                 {/* Reviews */}
