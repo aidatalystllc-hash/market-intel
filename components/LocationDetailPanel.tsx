@@ -102,17 +102,17 @@ function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unkn
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
       {entries.map(([key, value]) => (
         <div key={key}>
           <div style={{
             fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 9,
+            fontSize: 8,
             fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing: '0.06em',
             color: accentColor,
-            marginBottom: 3,
+            marginBottom: 2,
           }}>
             {key.replace(/_/g, ' ')}
           </div>
@@ -133,92 +133,73 @@ function tryParseJSON(val: unknown): unknown {
 }
 
 function EnrichedFieldValue({ value: rawValue, accentColor }: { value: unknown; accentColor: string }) {
-  // Auto-parse JSON strings (API sometimes returns stringified arrays/objects)
   const value = tryParseJSON(rawValue);
 
-  // Array of objects (e.g. recent_news, pricing, services, membership_options)
   if (Array.isArray(value)) {
     if (value.length === 0) return null;
 
-    // Array of strings — render as tag pills
+    // Array of strings — compact tag pills
     if (typeof value[0] === 'string') {
       return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {(value as string[]).slice(0, 12).map((item, i) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          {(value as string[]).slice(0, 8).map((item, i) => (
             <span key={i} style={{
-              fontSize: 9,
-              padding: '2px 6px',
-              borderRadius: 3,
-              background: `${accentColor}12`,
-              color: accentColor,
+              fontSize: 8, padding: '1px 5px', borderRadius: 3,
+              background: `${accentColor}12`, color: accentColor,
               border: `1px solid ${accentColor}25`,
               fontFamily: "'JetBrains Mono', monospace",
-            }}>{item}</span>
+            }}>{item.slice(0, 40)}</span>
           ))}
-          {value.length > 12 && (
-            <span style={{ fontSize: 9, color: 'var(--tx3)' }}>+{value.length - 12} more</span>
-          )}
+          {value.length > 8 && <span style={{ fontSize: 8, color: 'var(--tx3)' }}>+{value.length - 8}</span>}
         </div>
       );
     }
 
-    // Array of objects — render each as a mini card
+    // Array of objects — compact rows
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {(value as Record<string, unknown>[]).slice(0, 8).map((item, i) => (
-          <div key={i} style={{
-            padding: '6px 10px',
-            borderRadius: 5,
-            background: `${accentColor}06`,
-            border: `1px solid ${accentColor}15`,
-            fontSize: 11,
-          }}>
-            {Object.entries(item).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
-              <div key={k} style={{ marginBottom: 2 }}>
-                <span style={{
-                  fontWeight: 700,
-                  fontSize: 11,
-                  color: 'var(--tx)',
-                  marginRight: 4,
-                }}>{typeof v === 'string' ? v.slice(0, 250) : JSON.stringify(v)}</span>
-                {k === 'headline' || k === 'name' || k === 'service' ? null : (
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 8,
-                    color: 'var(--tx3)',
-                    textTransform: 'uppercase',
-                  }}> ({k.replace(/_/g, ' ')})</span>
-                )}
-              </div>
-            ))}
-          </div>
-        ))}
-        {(value as unknown[]).length > 8 && (
-          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>+{(value as unknown[]).length - 8} more items</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {(value as Record<string, unknown>[]).slice(0, 5).map((item, i) => {
+          const vals = Object.entries(item).filter(([, v]) => v != null && v !== '');
+          // Show as a single compact line: "Name — $price — details"
+          const parts = vals.map(([, v]) => typeof v === 'string' ? v.slice(0, 80) : String(v));
+          return (
+            <div key={i} style={{
+              padding: '3px 6px', borderRadius: 3, fontSize: 10,
+              background: `${accentColor}06`, border: `1px solid ${accentColor}12`,
+              color: 'var(--tx2)', lineHeight: 1.3,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              <span style={{ fontWeight: 600, color: 'var(--tx)' }}>{parts[0]}</span>
+              {parts.length > 1 && <span> — {parts.slice(1).join(' · ')}</span>}
+            </div>
+          );
+        })}
+        {(value as unknown[]).length > 5 && (
+          <div style={{ fontSize: 8, color: 'var(--tx3)', fontStyle: 'italic' }}>+{(value as unknown[]).length - 5} more</div>
         )}
       </div>
     );
   }
 
-  // Plain string / number
+  // Plain string / number — truncate long text
   if (typeof value === 'string' || typeof value === 'number') {
-    return <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.5 }}>{String(value)}</div>;
+    const str = String(value);
+    return <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.3 }}>{str.length > 200 ? str.slice(0, 200) + '...' : str}</div>;
   }
 
-  // Object (non-array) — render as a card
+  // Object (non-array)
   if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v != null && v !== '');
     return (
-      <div style={{ padding: '6px 10px', borderRadius: 5, background: `${accentColor}06`, border: `1px solid ${accentColor}15`, fontSize: 11 }}>
-        {Object.entries(value as Record<string, unknown>).filter(([, v]) => v != null && v !== '').map(([k, v]) => {
+      <div style={{ fontSize: 10, color: 'var(--tx2)' }}>
+        {entries.slice(0, 4).map(([k, v]) => {
           const parsed = tryParseJSON(v);
           return (
-            <div key={k} style={{ marginBottom: 3 }}>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 600, color: 'var(--tx3)', textTransform: 'uppercase', marginBottom: 1 }}>{k.replace(/_/g, ' ')}</div>
-              {Array.isArray(parsed) ? (
-                <EnrichedFieldValue value={parsed} accentColor={accentColor} />
-              ) : (
-                <div style={{ color: 'var(--tx2)', fontSize: 11 }}>{typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}</div>
-              )}
+            <div key={k} style={{ marginBottom: 1 }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 7, fontWeight: 600, color: 'var(--tx3)', textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}: </span>
+              {Array.isArray(parsed)
+                ? <EnrichedFieldValue value={parsed} accentColor={accentColor} />
+                : <span>{typeof parsed === 'string' ? parsed.slice(0, 100) : JSON.stringify(parsed)}</span>}
             </div>
           );
         })}
@@ -226,9 +207,8 @@ function EnrichedFieldValue({ value: rawValue, accentColor }: { value: unknown; 
     );
   }
 
-  // Boolean
   if (typeof value === 'boolean') {
-    return <div style={{ fontSize: 11, color: 'var(--tx2)' }}>{value ? 'Yes' : 'No'}</div>;
+    return <span style={{ fontSize: 10, color: 'var(--tx2)' }}>{value ? 'Yes' : 'No'}</span>;
   }
 
   return null;
@@ -928,9 +908,9 @@ function LocationEnrichButton({ domain, enrichType, label, desc, locationName, l
         </div>
       )}
       {result && (
-        <div style={{ marginTop: 6, padding: 8, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data</span>
+        <div style={{ marginTop: 4, padding: 6, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data</span>
             {isCached && (
               <>
                 <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
@@ -1032,9 +1012,9 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         </div>
       )}
       {result && (
-        <div style={{ marginTop: 6, padding: 8, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a4f96', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>🏢 Company Data</span>
+        <div style={{ marginTop: 4, padding: 6, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: '#1a4f96', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>🏢 Company Data</span>
             {isCached && (
               <>
                 <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>

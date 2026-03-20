@@ -991,14 +991,22 @@ export default function DetailPanel({
             {enrichMsg && (
               <div style={{
                 fontSize: 10,
-                color: enrichMsg.includes('Searching') ? 'var(--tx2)' : '#b03a1a',
+                color: enrichMsg.includes('Searching') ? '#1a4f96' : '#b03a1a',
                 marginTop: 6,
                 textAlign: 'center',
-                padding: enrichMsg.includes('Searching') ? 0 : '4px 8px',
-                background: enrichMsg.includes('Searching') ? 'transparent' : 'rgba(176,58,26,0.04)',
+                padding: '4px 8px',
+                background: enrichMsg.includes('Searching') ? 'rgba(26,79,150,0.04)' : 'rgba(176,58,26,0.04)',
+                border: enrichMsg.includes('Searching') ? '1px solid rgba(26,79,150,0.12)' : '1px solid rgba(176,58,26,0.12)',
                 borderRadius: 4,
                 lineHeight: 1.4,
-              }}>{enrichMsg}</div>
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}>
+                {enrichMsg.includes('Searching') && <Spinner color="#1a4f96" />}
+                <span>{enrichMsg}{enrichMsg.includes('Searching') ? ' (15-30 sec)' : ''}</span>
+              </div>
             )}
             <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 8, textAlign: 'center', lineHeight: 1.4, fontStyle: 'italic' }}>
               Limit: ~5 enrichments per minute. Wait a few seconds between clicks for best results.
@@ -1453,6 +1461,18 @@ function HierarchyLevel({
 }
 
 /* ── Sub-components ── */
+
+function Spinner({ color }: { color: string }) {
+  return (
+    <>
+      <style>{`@keyframes enrichSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <span style={{
+        display: 'inline-block', width: 12, height: 12, border: `2px solid ${color}30`,
+        borderTopColor: color, borderRadius: '50%', animation: 'enrichSpin 0.8s linear infinite', flexShrink: 0,
+      }} />
+    </>
+  );
+}
 
 function Badge({ text, bg }: { text: string; bg: string }) {
   return (
