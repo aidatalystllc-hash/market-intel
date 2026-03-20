@@ -738,70 +738,35 @@ export default function LocationDetailPanel({
           )}
         </Section>
 
-        {/* ── Location Enrichment (prominent, green-themed) ── */}
-        <div style={{
-          margin: '0 0 20px',
-          padding: 14,
-          background: 'linear-gradient(135deg, rgba(26,112,64,0.04), rgba(26,112,64,0.01))',
-          border: '2px solid rgba(26,112,64,0.20)',
-          borderRadius: 10,
-        }}>
-          <div style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: '#1a7040',
-            marginBottom: 6,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <span style={{ fontSize: 14 }}>📍</span>
-            Enrich This Location
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
-            Searches for this specific location&apos;s page to get hours, pricing, services, and amenities for <strong style={{ color: 'var(--tx2)' }}>{location.city ? `${location.name || parentCompany.name} in ${location.city}, ${location.state}` : 'this branch'}</strong>.
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-news" label="📰 News" desc="Local news & events" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
-            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-pricing" label="💰 Pricing" desc="Memberships & pricing" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
-            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-detail" label="🛠 Services" desc="Hours, amenities, staff" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
-          </div>
-        </div>
+        {/* ── Location Enrichment (tab-based) ── */}
+        <EnrichmentTabs
+          title="📍 Enrich This Location"
+          subtitle={location.city ? `${location.name || parentCompany.name} in ${location.city}, ${location.state}` : 'This branch'}
+          accentColor="#1a7040"
+          tabs={[
+            { key: 'location-news', label: '📰 News' },
+            { key: 'location-pricing', label: '💰 Pricing' },
+            { key: 'location-detail', label: '🛠 Services' },
+          ]}
+          domain={parentCompany.domain}
+          locationName={location.name}
+          locationCity={location.city}
+          locationState={location.state}
+          datasetId={datasetId}
+        />
 
-        {/* ── Company-Wide Enrichment (separate, blue-themed) ── */}
-        <div style={{
-          margin: '0 0 20px',
-          padding: 14,
-          background: 'linear-gradient(135deg, rgba(26,79,150,0.04), rgba(26,79,150,0.01))',
-          border: '2px solid rgba(26,79,150,0.15)',
-          borderRadius: 10,
-        }}>
-          <div style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: '#1a4f96',
-            marginBottom: 6,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <span style={{ fontSize: 14 }}>🏢</span>
-            Company-Wide Enrichment
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
-            These enrich data about <strong style={{ color: 'var(--tx2)' }}>{parentCompany.name}</strong> as a whole — all locations, not just this one.
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" datasetId={datasetId} />
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" datasetId={datasetId} />
-          </div>
-        </div>
+        {/* ── Company-Wide Enrichment (tab-based) ── */}
+        <EnrichmentTabs
+          title="🏢 Company-Wide"
+          subtitle={parentCompany.name}
+          accentColor="#1a4f96"
+          tabs={[
+            { key: 'recent-news', label: '📰 News' },
+            { key: 'services-pricing', label: '💰 Pricing' },
+          ]}
+          domain={parentCompany.domain}
+          datasetId={datasetId}
+        />
       </div>
     </div>
   );
@@ -824,9 +789,122 @@ function Spinner({ color }: { color: string }) {
   );
 }
 
-/* ── Enrich Button Components ── */
+/* ── Tab-based Enrichment Component ── */
 
-function LocationEnrichButton({ domain, enrichType, label, desc, locationName, locationCity, locationState, datasetId }: { domain: string; enrichType: string; label: string; desc: string; locationName: string; locationCity?: string; locationState?: string; datasetId?: string | null }) {
+function EnrichmentTabs({ title, subtitle, accentColor, tabs, domain, locationName, locationCity, locationState, datasetId }: {
+  title: string; subtitle: string; accentColor: string;
+  tabs: { key: string; label: string }[];
+  domain: string; locationName?: string; locationCity?: string; locationState?: string; datasetId?: string | null;
+}) {
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Record<string, Record<string, unknown>>>({});
+  const [error, setError] = useState('');
+  const isLocation = !!locationName;
+  const cache = isLocation ? locationEnrichCache : companyEnrichCache;
+
+  const handleTabClick = async (tabKey: string) => {
+    // If already active, toggle closed
+    if (activeTab === tabKey) { setActiveTab(null); return; }
+    setActiveTab(tabKey);
+    setError('');
+
+    // Check cache
+    const cacheKey = isLocation
+      ? `${domain}:${tabKey}:${locationName}:${locationCity}:${locationState}`
+      : `${domain}:${tabKey}`;
+    const cached = cache.get(cacheKey);
+    if (cached) { setResults(prev => ({ ...prev, [tabKey]: cached })); return; }
+
+    // Already fetched this session
+    if (results[tabKey]) return;
+
+    // Fetch
+    setLoading(true);
+    try {
+      const body: Record<string, unknown> = { domain, enrichType: tabKey, datasetId };
+      if (isLocation) { body.locationName = locationName; body.locationCity = locationCity; body.locationState = locationState; }
+      const res = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok && res.status >= 500) { setError('Server timed out. Try again.'); setLoading(false); return; }
+      const data = await res.json();
+      if (data.error) { setError(data.error); }
+      else if (data.enrichedData) {
+        const fields = Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]);
+        if (fields.length > 0) {
+          setResults(prev => ({ ...prev, [tabKey]: data.enrichedData }));
+          cache.set(cacheKey, data.enrichedData);
+        } else { setError('No data found for this category.'); }
+      } else { setError('No data found.'); }
+    } catch { setError('Could not reach the enrichment service. Try again.'); }
+    finally { setLoading(false); }
+  };
+
+  const activeResult = activeTab ? results[activeTab] : null;
+
+  return (
+    <div style={{ margin: '0 0 16px', border: `1.5px solid ${accentColor}30`, borderRadius: 8, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '6px 10px', background: `${accentColor}08`, borderBottom: `1px solid ${accentColor}20` }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: accentColor }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{subtitle}</div>
+      </div>
+
+      {/* Tab buttons */}
+      <div style={{ display: 'flex', borderBottom: activeResult || (loading && activeTab) || error ? `1px solid ${accentColor}15` : 'none' }}>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const hasData = !!results[tab.key];
+          return (
+            <button
+              key={tab.key}
+              onClick={() => handleTabClick(tab.key)}
+              disabled={loading && activeTab === tab.key}
+              style={{
+                flex: 1, padding: '7px 4px', border: 'none', cursor: loading ? 'default' : 'pointer',
+                background: isActive ? `${accentColor}10` : 'transparent',
+                borderBottom: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
+                fontSize: 10, fontWeight: isActive ? 700 : 500,
+                color: isActive ? accentColor : 'var(--tx2)',
+                transition: 'all 0.12s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+              }}
+            >
+              {loading && isActive ? <Spinner color={accentColor} /> : tab.label}
+              {hasData && !isActive && <span style={{ fontSize: 7, color: '#1a7040' }}>&#10003;</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Result area (full width below tabs) */}
+      {error && activeTab && (
+        <div style={{ padding: '6px 10px', fontSize: 9, color: '#b03a1a', background: 'rgba(176,58,26,0.03)', lineHeight: 1.3, wordBreak: 'break-word' }}>
+          {error}
+        </div>
+      )}
+      {loading && activeTab && !activeResult && (
+        <div style={{ padding: '10px', textAlign: 'center', fontSize: 9, color: 'var(--tx3)' }}>
+          Searching... this may take 15-30 seconds
+        </div>
+      )}
+      {activeResult && (
+        <div style={{ padding: '8px 10px', overflow: 'hidden', minWidth: 0 }}>
+          <EnrichedDataRenderer data={activeResult} accentColor={accentColor} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Legacy Enrich Button (unused — kept for reference) ── */
+
+function LocationEnrichButton_UNUSED({ domain, enrichType, label, desc, locationName, locationCity, locationState, datasetId }: { domain: string; enrichType: string; label: string; desc: string; locationName: string; locationCity?: string; locationState?: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
