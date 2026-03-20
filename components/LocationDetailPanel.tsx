@@ -87,8 +87,15 @@ const sectionTitleStyle: React.CSSProperties = {
 
 /* ── Generic Enriched Data Renderer ── */
 
+function isGarbageValue(v: unknown): boolean {
+  if (typeof v !== 'string') return false;
+  const lower = v.toLowerCase();
+  return lower.includes('page not found') || lower.includes('404') ||
+    lower.includes('access denied') || lower.includes('cookie') && lower.includes('close modal') && v.length < 200;
+}
+
 function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unknown>; accentColor: string }) {
-  const entries = Object.entries(data).filter(([k, v]) => !k.startsWith('_') && v != null && v !== '' && !(Array.isArray(v) && v.length === 0));
+  const entries = Object.entries(data).filter(([k, v]) => !k.startsWith('_') && v != null && v !== '' && !(Array.isArray(v) && v.length === 0) && !isGarbageValue(v));
 
   if (entries.length === 0) {
     return <div style={{ fontSize: 10, color: 'var(--tx3)', fontStyle: 'italic' }}>No data returned.</div>;

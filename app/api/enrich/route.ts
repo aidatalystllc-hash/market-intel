@@ -368,7 +368,7 @@ export async function POST(req: NextRequest) {
           const results = searchData?.data || [];
           // Combine top results into a single markdown for Claude to analyze
           const combined = results
-            .filter((r: { markdown?: string }) => r.markdown && r.markdown.length > 100)
+            .filter((r: { markdown?: string }) => r.markdown && r.markdown.length > 100 && !isErrorPage(r.markdown))
             .slice(0, 3)
             .map((r: { url?: string; markdown?: string }) => `Source: ${r.url || 'unknown'}\n${(r.markdown || '').slice(0, 2000)}`)
             .join('\n\n---\n\n');
