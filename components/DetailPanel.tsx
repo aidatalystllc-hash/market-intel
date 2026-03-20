@@ -939,6 +939,7 @@ export default function DetailPanel({
                     }
                     setEnriching(true);
                     setIsCachedResult(false);
+                    setEnrichedData(null);
                     setEnrichMsg(`Searching ${opt.label.slice(2)}...`);
                     try {
                       const res = await fetch('/api/enrich', {
@@ -958,8 +959,13 @@ export default function DetailPanel({
                       } else {
                         setEnrichMsg('No data found for this category.');
                       }
-                    } catch {
-                      setEnrichMsg('Enrichment failed. Try again.');
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : '';
+                      if (msg.includes('JSON')) {
+                        setEnrichMsg('Search timed out. The website may be slow. Try again in a moment.');
+                      } else {
+                        setEnrichMsg('Could not reach the enrichment service. Check your connection and try again.');
+                      }
                     } finally {
                       setEnriching(false);
                     }
@@ -983,7 +989,16 @@ export default function DetailPanel({
               ))}
             </div>
             {enrichMsg && (
-              <div style={{ fontSize: 10, color: enrichedData ? '#1a7040' : 'var(--tx2)', marginTop: 6, textAlign: 'center' }}>{enrichMsg}</div>
+              <div style={{
+                fontSize: 10,
+                color: enrichMsg.includes('Searching') ? 'var(--tx2)' : '#b03a1a',
+                marginTop: 6,
+                textAlign: 'center',
+                padding: enrichMsg.includes('Searching') ? 0 : '4px 8px',
+                background: enrichMsg.includes('Searching') ? 'transparent' : 'rgba(176,58,26,0.04)',
+                borderRadius: 4,
+                lineHeight: 1.4,
+              }}>{enrichMsg}</div>
             )}
             <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 8, textAlign: 'center', lineHeight: 1.4, fontStyle: 'italic' }}>
               Limit: ~5 enrichments per minute. Wait a few seconds between clicks for best results.
@@ -1059,7 +1074,21 @@ function EnrichedLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EnrichedFields({ data }: { data: Record<string, unknown> }) {
+function tryParseJSON(val: unknown): unknown {
+  if (typeof val !== 'string') return val;
+  const s = val.trim();
+  if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
+    try { return JSON.parse(s); } catch { return val; }
+  }
+  return val;
+}
+
+function EnrichedFields({ data: rawData }: { data: Record<string, unknown> }) {
+  // Auto-parse any JSON strings in the data
+  const data: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rawData)) {
+    data[k] = tryParseJSON(v);
+  }
   const items: React.ReactNode[] = [];
 
   // Contact info

@@ -861,6 +861,7 @@ function LocationEnrichButton({ domain, enrichType, label, desc, locationName, l
     }
     setLoading(true);
     setError('');
+    setResult(null);
     setIsCached(false);
     try {
       const res = await fetch('/api/enrich', {
@@ -868,6 +869,10 @@ function LocationEnrichButton({ domain, enrichType, label, desc, locationName, l
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain, enrichType, locationName, locationCity, locationState, datasetId }),
       });
+      if (!res.ok && res.status >= 500) {
+        setError('The server took too long to respond. Try again in a moment.');
+        return;
+      }
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -963,6 +968,10 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain, enrichType, datasetId }),
       });
+      if (!res.ok && res.status >= 500) {
+        setError('The server took too long to respond. Try again in a moment.');
+        return;
+      }
       const data = await res.json();
       if (data.error) {
         setError(data.error);
