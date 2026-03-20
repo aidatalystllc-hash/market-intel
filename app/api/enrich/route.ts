@@ -80,6 +80,26 @@ function isLocationType(t: EnrichType): boolean {
 }
 
 // Helper: build Firecrawl search query for a given enrichment type
+// Detect error/404 pages that scrapers pick up as "content"
+function isErrorPage(content: string): boolean {
+  const lower = content.toLowerCase();
+  const errorPatterns = [
+    'page not found',
+    '404 not found',
+    'page you are looking for could not be found',
+    'this page doesn\'t exist',
+    'this page does not exist',
+    'sorry, we couldn\'t find',
+    'error 404',
+    'page doesn\'t exist',
+    'nothing was found',
+    'no results found',
+    'the requested url was not found',
+  ];
+  const firstChunk = lower.slice(0, 500);
+  return errorPatterns.some(p => firstChunk.includes(p));
+}
+
 function buildSearchQuery(
   enrichType: EnrichType,
   domain: string,
@@ -238,10 +258,12 @@ export async function POST(req: NextRequest) {
           // Look for a result on the company domain that mentions the city/location
           for (const r of results) {
             const url = r.url || '';
-            const content = (r.markdown || r.description || '').toLowerCase();
+            const content = (r.markdown || r.description || '');
+            if (isErrorPage(content)) continue;
+            const contentLower = content.toLowerCase();
             if (url.includes(domain) && (
-              (locationCity && content.includes(locationCity.toLowerCase())) ||
-              (locationName && content.includes(locationName.toLowerCase()))
+              (locationCity && contentLower.includes(locationCity.toLowerCase())) ||
+              (locationName && contentLower.includes(locationName.toLowerCase()))
             )) {
               locationPageUrl = url;
               markdown = r.markdown || '';
@@ -252,7 +274,7 @@ export async function POST(req: NextRequest) {
           // If no domain-specific match, try the first result that has content about this location
           if (!locationPageUrl && results.length > 0) {
             for (const r of results) {
-              if (r.markdown && r.markdown.length > 200) {
+              if (r.markdown && r.markdown.length > 200 && !isErrorPage(r.markdown)) {
                 locationPageUrl = r.url || '';
                 markdown = r.markdown;
                 scrapedUrl = r.url || '';
@@ -298,6 +320,9 @@ export async function POST(req: NextRequest) {
             if (scrapeRes.ok) {
               const data = await scrapeRes.json();
               const content = data?.data?.markdown || '';
+              // Reject error/404 pages
+              if (isErrorPage(content)) continue;
+
               // Check if this page mentions the specific city/location
               const contentLower = content.toLowerCase();
               const isRelevant = content.length > 200 && (
@@ -374,7 +399,7 @@ export async function POST(req: NextRequest) {
             if (scrapeRes.ok) {
               const data = await scrapeRes.json();
               const content = data?.data?.markdown || '';
-              if (content.length > 200) {
+              if (content.length > 200 && !isErrorPage(content)) {
                 markdown = content;
                 scrapedUrl = targetUrl;
                 break;
@@ -403,7 +428,7 @@ export async function POST(req: NextRequest) {
           if (scrapeRes.ok) {
             const data = await scrapeRes.json();
             const content = data?.data?.markdown || '';
-            if (content.length > 200) {
+            if (content.length > 200 && !isErrorPage(content)) {
               markdown = content;
               scrapedUrl = targetUrl;
               break;
@@ -462,6 +487,11 @@ export async function POST(req: NextRequest) {
         markdown = webSearchContent;
         scrapedUrl = scrapedUrl || 'claude web search';
       }
+    }
+
+    // Final check: reject if we only captured error pages
+    if (markdown && isErrorPage(markdown)) {
+      markdown = '';
     }
 
     if (!markdown) {
