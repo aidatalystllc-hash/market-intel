@@ -157,7 +157,7 @@ export default function CompanyTable({
             color: 'var(--tx)',
           }}
         >
-          COMPANY ROSTER
+          {tableViewMode === 'company' ? 'COMPANY ROSTER' : 'LOCATION ROSTER'}
         </span>
         <span
           style={{

@@ -40,8 +40,8 @@ export default function StatBar({ companies }: StatBarProps) {
       { label: 'PE-Backed', value: peBacked.toLocaleString() },
       { label: 'National', value: national.toLocaleString() },
       { label: 'Regional', value: regional.toLocaleString() },
-      { label: 'Avg Rating', value: avgRating },
       { label: 'Total Locs', value: totalLocations.toLocaleString() },
+      { label: 'Avg Rating', value: avgRating },
       { label: 'Total Reviews', value: fmtK(totalReviews) },
       { label: 'Total Photos', value: fmtK(totalPhotos) },
     ];

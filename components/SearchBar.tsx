@@ -60,7 +60,10 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         c.domain.toLowerCase().includes(q) ||
         c.peFirm.toLowerCase().includes(q) ||
         c.services.some((s) => s.toLowerCase().includes(q)) ||
-        c.executiveName.toLowerCase().includes(q)
+        c.executiveName.toLowerCase().includes(q) ||
+        c.parentCompany.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q) ||
+        c.locations.some((l) => l.name.toLowerCase().includes(q))
       );
     }).slice(0, 30);
   }, [debouncedQuery, companies]);
