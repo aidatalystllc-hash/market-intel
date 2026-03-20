@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // Enrichment types focused on data NOT already in the uploaded files
 const ENRICH_TYPES = {
@@ -421,8 +421,10 @@ export async function POST(req: NextRequest) {
     let sonnetInputTokens = 0;
     let sonnetOutputTokens = 0;
 
-    if (anthropicKey && anthropicKey !== 'your_key_here') {
-      // Determine if we should try Claude web search (always try, but especially if Firecrawl didn't find enough)
+    // Only try Claude web search if Firecrawl didn't find substantial content (saves time + cost)
+    const needsWebSearch = !markdown || markdown.length < 500;
+
+    if (needsWebSearch && anthropicKey && anthropicKey !== 'your_key_here') {
       const webSearchQuery = buildSearchQuery(enrichType, domain, locationName, locationCity, locationState);
       let contextDescription = '';
 
@@ -463,8 +465,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (!markdown) {
+      const locationHint = locationCity ? ` for ${locationName || 'this location'} in ${locationCity}` : '';
       return NextResponse.json({
-        error: `Could not find readable content on ${domain}. The site may be blocking scrapers.`,
+        error: `Could not find ${enrichType.replace(/-/g, ' ')} data${locationHint} on ${domain}. This often means the website doesn't have a dedicated page for this, or the site blocks automated access. Try a different enrichment type.`,
         enrichedData: null,
       });
     }
