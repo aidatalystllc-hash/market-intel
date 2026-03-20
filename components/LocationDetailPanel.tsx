@@ -183,7 +183,34 @@ function EnrichedFieldValue({ value: rawValue, accentColor }: { value: unknown; 
   // Plain string / number
   if (typeof value === 'string' || typeof value === 'number') {
     const str = String(value);
-    return <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.3, wordBreak: 'break-word', minWidth: 0 }}>{str.length > 150 ? str.slice(0, 150) + '...' : str}</div>;
+    // Check if string contains inline JSON objects like: "tanning beds: {"single":"$10","package":"$45"}"
+    if (typeof value === 'string' && value.includes('{"')) {
+      const parts = value.split(/(\{[^}]+\})/g);
+      return (
+        <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.4, wordBreak: 'break-word', minWidth: 0 }}>
+          {parts.map((part, i) => {
+            if (part.startsWith('{')) {
+              try {
+                const obj = JSON.parse(part);
+                return (
+                  <span key={i}>
+                    {Object.entries(obj).map(([k, v], j) => (
+                      <span key={k}>
+                        {j > 0 && ' · '}
+                        <span style={{ fontWeight: 600, color: 'var(--tx)' }}>{String(v)}</span>
+                        <span style={{ fontSize: 8, color: 'var(--tx3)' }}> ({k.replace(/_/g, ' ')})</span>
+                      </span>
+                    ))}
+                  </span>
+                );
+              } catch { return <span key={i}>{part}</span>; }
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </div>
+      );
+    }
+    return <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.3, wordBreak: 'break-word', minWidth: 0 }}>{str.length > 200 ? str.slice(0, 200) + '...' : str}</div>;
   }
 
   // Object (non-array)
