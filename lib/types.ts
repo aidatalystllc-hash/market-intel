@@ -67,6 +67,11 @@ export interface FilterState {
   ownership: 'all' | 'pe' | 'independent';
   service: string | null;
   minRating: number;
+  employeeSizeFilter: string | null;
+  locationCountFilter: string | null;
+  ratingFilter: string | null;
+  reviewsFilter: string | null;
+  photosFilter: string | null;
 }
 
 export type SortKey =
@@ -79,6 +84,9 @@ export type SortKey =
   | 'score'
   | 'maScore'
   | 'employees'
+  | 'employeeSize'
+  | 'totalReviews'
+  | 'totalPhotos'
   | 'founded'
   | 'services';
 

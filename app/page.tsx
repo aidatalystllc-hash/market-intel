@@ -35,6 +35,33 @@ const StrategyChart = dynamic(() => import('@/components/StrategyChart'), {
   ),
 });
 
+function parseBucketRange(bucket: string): { min: number; max: number } {
+  const s = bucket.trim();
+  if (s.startsWith('<')) {
+    return { min: -Infinity, max: parseFloat(s.slice(1).replace(/,/g, '').trim()) };
+  }
+  if (s.endsWith('+')) {
+    return { min: parseFloat(s.slice(0, -1).replace(/,/g, '')), max: Infinity };
+  }
+  // Split on hyphen, but handle ranges like "501-1,000" by splitting on first hyphen only
+  const dashIdx = s.indexOf('-');
+  if (dashIdx > 0) {
+    const left = s.slice(0, dashIdx).replace(/,/g, '').trim();
+    const right = s.slice(dashIdx + 1).replace(/,/g, '').trim();
+    return { min: parseFloat(left), max: parseFloat(right) };
+  }
+  const n = parseFloat(s.replace(/,/g, ''));
+  return { min: n, max: n };
+}
+
+function inBucket(value: number | null | undefined, bucket: string): boolean {
+  if (value == null) return false;
+  const { min, max } = parseBucketRange(bucket);
+  if (min === -Infinity) return value < max;
+  if (max === Infinity) return value >= min;
+  return value >= min && value <= max;
+}
+
 function applyFilters(companies: Company[], filters: FilterState): Company[] {
   return companies.filter((c) => {
     if (filters.footprint !== 'all' && c.footprint !== filters.footprint) return false;
@@ -42,6 +69,11 @@ function applyFilters(companies: Company[], filters: FilterState): Company[] {
     if (filters.ownership === 'independent' && c.isPE) return false;
     if (filters.service && !c.services.some((s) => s.toLowerCase().includes(filters.service!.toLowerCase()))) return false;
     if (filters.minRating > 0 && (!c.avgRating || c.avgRating < filters.minRating)) return false;
+    if (filters.employeeSizeFilter && !inBucket(c.employees, filters.employeeSizeFilter)) return false;
+    if (filters.locationCountFilter && !inBucket(c.locationCount, filters.locationCountFilter)) return false;
+    if (filters.ratingFilter && !inBucket(c.avgRating, filters.ratingFilter)) return false;
+    if (filters.reviewsFilter && !inBucket(c.totalReviews, filters.reviewsFilter)) return false;
+    if (filters.photosFilter && !inBucket(c.totalPhotos, filters.photosFilter)) return false;
     return true;
   });
 }
@@ -63,7 +95,10 @@ function sortCompanies(companies: Company[], key: SortKey, asc: boolean): Compan
       case 'avgRating': av = a.avgRating ?? 0; bv = b.avgRating ?? 0; break;
       case 'score': av = a.score; bv = b.score; break;
       case 'maScore': av = a.maScore; bv = b.maScore; break;
-      case 'employees': av = a.employees ?? 0; bv = b.employees ?? 0; break;
+      case 'employees':
+      case 'employeeSize': av = a.employees ?? 0; bv = b.employees ?? 0; break;
+      case 'totalReviews': av = a.totalReviews ?? 0; bv = b.totalReviews ?? 0; break;
+      case 'totalPhotos': av = a.totalPhotos ?? 0; bv = b.totalPhotos ?? 0; break;
       case 'founded': av = a.founded ?? 9999; bv = b.founded ?? 9999; break;
     }
     if (av < bv) return asc ? -1 : 1;
@@ -161,9 +196,21 @@ function ShareBanner({ datasetId }: { datasetId: string }) {
       </code>
       <button
         onClick={() => {
-          navigator.clipboard.writeText(shareUrl);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
+          try {
+            navigator.clipboard.writeText(shareUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch {
+            // Fallback for HTTP or unsupported browsers
+            const input = document.createElement('input');
+            input.value = shareUrl;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }
         }}
         style={{
           padding: '3px 10px',
@@ -211,6 +258,11 @@ function DashboardPage() {
     ownership: 'all',
     service: null,
     minRating: 0,
+    employeeSizeFilter: null,
+    locationCountFilter: null,
+    ratingFilter: null,
+    reviewsFilter: null,
+    photosFilter: null,
   });
   const [currentView, setCurrentView] = useState<ViewMode>('map');
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);

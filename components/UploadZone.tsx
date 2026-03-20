@@ -77,7 +77,7 @@ export default function UploadZone({
       <input
         id={`upload-${label}`}
         type="file"
-        accept=".xlsx,.xls,.json"
+        accept=".xlsx,.json"
         className="hidden"
         onChange={handleChange}
       />

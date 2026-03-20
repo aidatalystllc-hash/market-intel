@@ -10,21 +10,21 @@ const ENRICH_TYPES = {
     prompt: `You are an M&A research analyst. Extract any information about private equity ownership, acquisitions, mergers, investments, or ownership changes from this webpage. Return ONLY valid JSON:
 - pe_backed: true/false based on any PE/investor mentions
 - pe_firm: name of PE firm if mentioned
-- acquisitions: array of {company, date, details} for any acquisitions mentioned
+- acquisitions: array of {company, date, details} for any acquisitions mentioned — always include the date if mentioned (e.g., "January 2024")
 - investors: array of investor/firm names mentioned
-- funding: any funding rounds or investment amounts mentioned
-- ownership_notes: any other relevant ownership information (1-2 sentences)
+- funding: any funding rounds or investment amounts mentioned, include dates (e.g., "Series B $20M (March 2023)")
+- ownership_notes: any other relevant ownership information with dates when changes occurred (1-2 sentences)
 If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes": "No PE or acquisition information found on this page."}`,
   },
   'recent-news': {
     label: 'Recent News & Growth',
     pages: ['', '/news', '/press', '/blog', '/press-releases'],
     prompt: `Extract recent news, announcements, and growth signals from this company's webpage. Return ONLY valid JSON:
-- recent_news: array of {headline, date, summary} for any news items (max 5)
-- new_locations: any mentions of new location openings, expansions, or new markets
-- partnerships: any new partnerships or collaborations mentioned
-- awards: any recent awards or recognitions
-- growth_signals: 1-2 sentences summarizing growth trajectory based on what you see`,
+- recent_news: array of {headline, date, summary} for any news items (max 5) — always include the date
+- new_locations: string with date if mentioned (e.g., "Opened Kansas City location (March 2023)")
+- partnerships: string with date if mentioned (e.g., "Partnered with XYZ Corp (January 2024)")
+- awards: string with date if mentioned (e.g., "Chamber of Commerce award (March 2023)")
+- growth_signals: 1-2 sentences summarizing growth trajectory based on what you see, include timeframes`,
   },
   'services-pricing': {
     label: 'Services & Pricing',
@@ -33,7 +33,7 @@ If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes
 - services: array of service names offered
 - pricing: array of {service, price, details} for any pricing found (memberships, packages, etc.)
 - membership_options: array of {name, price, benefits} if membership/subscription plans exist
-- specials: any current promotions or special offers
+- specials: any current promotions or special offers — include expiration dates if visible (e.g., "20% off through March 2024")
 - differentiators: what makes their services unique (1 sentence)`,
   },
   'location-detail': {

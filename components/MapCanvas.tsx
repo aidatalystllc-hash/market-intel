@@ -42,14 +42,25 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
+    const US_BOUNDS: L.LatLngBoundsExpression = [[15, -170], [72, -50]];
+
     const map = L.map(mapContainerRef.current, {
       zoomControl: false,
       attributionControl: false,
+      maxBounds: US_BOUNDS,
+      maxBoundsViscosity: 1.0,
+      minZoom: 3,
     }).setView([39.8, -98.5], 4); // Center of US
 
-    // Clean professional tile layer (CARTO Light)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // Clean professional tile layer (CARTO Light — no-labels base + English-only labels overlay)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+      attribution: '',
       subdomains: 'abcd',
       maxZoom: 19,
     }).addTo(map);
@@ -299,6 +310,19 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Listen for panToLocation events (from DetailPanel location rows)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ lat: number; lng: number }>).detail;
+      if (!detail || !isFinite(detail.lat) || !isFinite(detail.lng)) return;
+      const map = mapRef.current;
+      if (!map) return;
+      map.setView([detail.lat, detail.lng], Math.max(map.getZoom(), 12), { animate: true });
+    };
+    window.addEventListener('panToLocation', handler);
+    return () => window.removeEventListener('panToLocation', handler);
+  }, []);
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" style={{ background: '#edeae2' }} />
@@ -352,7 +376,7 @@ export default function MapCanvas({ companies, onHover, onClick, onLocationClick
         </div>
         <div className="flex items-center gap-[7px] text-[var(--tx2)] font-medium">
           <span className="w-2.5 h-2.5 rounded-full bg-[#1a7040] inline-block flex-shrink-0" />
-          Local
+          Single Loc
         </div>
         <div className="font-mono text-[9px] text-[var(--tx3)] tracking-widest uppercase font-medium mt-1.5 mb-0.5">
           Indicators

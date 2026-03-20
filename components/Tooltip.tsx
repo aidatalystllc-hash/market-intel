@@ -125,7 +125,7 @@ export default function Tooltip({ company, x, y, onViewProfile }: TooltipProps) 
             background: FOOTPRINT_COLORS[company.footprint] || FOOTPRINT_COLORS.local,
           }}
         >
-          {company.footprint}
+          {company.footprint === 'local' ? 'Single Loc' : company.footprint}
         </span>
         {company.isPE && (
           <span
@@ -169,7 +169,7 @@ export default function Tooltip({ company, x, y, onViewProfile }: TooltipProps) 
           </span>
           {company.totalReviews !== null && (
             <span style={{ fontSize: 10, color: 'var(--tx3)' }}>
-              ({company.totalReviews} reviews)
+              ({company.totalReviews?.toLocaleString()} reviews)
             </span>
           )}
         </div>

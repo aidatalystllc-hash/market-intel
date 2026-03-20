@@ -24,7 +24,7 @@ interface CompanyTableProps {
 const FOOTPRINT_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   national: { bg: 'rgba(176,58,26,0.10)', color: 'var(--nat)', label: 'National' },
   regional: { bg: 'rgba(26,79,150,0.10)', color: 'var(--reg)', label: 'Regional' },
-  local: { bg: 'rgba(26,112,64,0.10)', color: 'var(--loc)', label: 'Local' },
+  local: { bg: 'rgba(26,112,64,0.10)', color: 'var(--loc)', label: 'Single Loc' },
 };
 
 interface ColumnDef {
@@ -77,6 +77,11 @@ function getFilteredColumnKeys(filters?: FilterState): Set<string> {
   if (filters.ownership !== 'all') keys.add('ownership');
   if (filters.service) keys.add('services');
   if (filters.minRating > 0) keys.add('avgRating');
+  if (filters.employeeSizeFilter) keys.add('employeeSize');
+  if (filters.locationCountFilter) keys.add('locationCount');
+  if (filters.ratingFilter) keys.add('avgRating');
+  if (filters.reviewsFilter) keys.add('totalReviews');
+  if (filters.photosFilter) keys.add('totalPhotos');
   return keys;
 }
 
@@ -255,18 +260,22 @@ export default function CompanyTable({
         </div>
       </div>
 
-      {/* Table */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {/* Column headers (sticky) */}
+      {/* Table — single scroll container for header + body alignment */}
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Column headers (sticky top) */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             padding: '0 14px',
             height: 26,
+            minWidth: 'max-content',
             borderBottom: '1px solid var(--bd)',
             background: 'var(--bg3)',
             flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
           }}
         >
           {tableViewMode === 'company'

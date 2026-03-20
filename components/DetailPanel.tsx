@@ -82,6 +82,9 @@ interface DetailPanelProps {
   datasetId?: string | null;
 }
 
+// Module-level enrichment cache — persists across component unmount/remount
+const detailPanelEnrichCache = new Map<string, Record<string, unknown>>();
+
 /* ── Component ── */
 
 export default function DetailPanel({
@@ -96,7 +99,12 @@ export default function DetailPanel({
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState('');
   const [enrichedData, setEnrichedData] = useState<Record<string, unknown> | null>(null);
+  const [lastEnrichType, setLastEnrichType] = useState<string>('');
+  const [isCachedResult, setIsCachedResult] = useState(false);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
+
+  // Cache ref points to module-level cache so it persists across unmount/remount
+  const enrichCacheRef = useRef(detailPanelEnrichCache);
 
   // Reset state on company change
   useEffect(() => {
@@ -105,6 +113,8 @@ export default function DetailPanel({
     setEnriching(false);
     setEnrichMsg('');
     setEnrichedData(null);
+    setLastEnrichType('');
+    setIsCachedResult(false);
     const timer = setTimeout(() => setAnimatedScore(company.score), 60);
     return () => clearTimeout(timer);
   }, [company?.id, company?.score, company]);
@@ -180,12 +190,12 @@ export default function DetailPanel({
           : company.state || '—',
     },
     {
-      label: 'Employees',
+      label: 'Est. Employees',
       value: company.employeeSize
         || (company.employees ? `~${company.employees.toLocaleString()}` : '—'),
     },
     { label: 'Locations', value: String(company.locationCount || 1) },
-    { label: 'Revenue', value: formatRevenue(company.revenue) },
+    { label: 'Est. Revenue', value: formatRevenue(company.revenue) },
     { label: 'Founded', value: company.founded ? String(company.founded) : '—' },
     { label: 'Parent Company', value: company.parentCompany || '—' },
   ];
@@ -344,7 +354,7 @@ export default function DetailPanel({
         {/* ── Badges ── */}
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
           <Badge
-            text={company.footprint}
+            text={company.footprint === 'local' ? 'Single Loc' : company.footprint}
             bg={FOOTPRINT_COLORS[company.footprint] || FOOTPRINT_COLORS.local}
           />
           {company.isPE && <Badge text="PE-BACKED" bg={PE_COLOR} />}
@@ -510,7 +520,7 @@ export default function DetailPanel({
         </Section>
 
         {/* ── PE Ownership ── */}
-        {company.isPE && (
+        {company.isPE && company.peFirm && (
           <Section title="PE Ownership">
             <div
               style={{
@@ -543,6 +553,57 @@ export default function DetailPanel({
             </div>
           </Section>
         )}
+
+        {/* ── Company Hierarchy ── */}
+        <Section title="Company Hierarchy">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {/* Level 1: PE Firm / Super Firm (if PE-backed) */}
+            {company.isPE && company.peFirm && (
+              <HierarchyLevel
+                level="PE Firm"
+                name={company.peFirm}
+                icon="🏦"
+                color="#7a1050"
+                isTop
+              />
+            )}
+
+            {/* Level 2: Parent / Holding Company (if exists) */}
+            {company.parentCompany && (
+              <HierarchyLevel
+                level={company.isPE ? 'Holding Company' : 'Parent Company'}
+                name={company.parentCompany}
+                icon="🏛️"
+                color="#1a4f96"
+                isTop={!company.isPE || !company.peFirm}
+              />
+            )}
+
+            {/* Level 3: This Company */}
+            <HierarchyLevel
+              level="Company"
+              name={company.name}
+              icon="🏢"
+              color="var(--tx)"
+              isTop={!company.parentCompany && (!company.isPE || !company.peFirm)}
+              isBottom={company.locationCount <= 0}
+              isCurrent
+            />
+
+            {/* Level 4: Locations */}
+            {company.locationCount > 0 && (
+              <HierarchyLevel
+                level={`${company.locationCount} Location${company.locationCount !== 1 ? 's' : ''}`}
+                name={company.locations.length > 0
+                  ? company.locations.slice(0, 3).map(l => l.name || `${l.city}, ${l.state}`).join(' · ')
+                  : `${company.city}, ${company.state}`}
+                icon="📍"
+                color="#1a7040"
+                isBottom
+              />
+            )}
+          </div>
+        </Section>
 
         {/* ── Platform Score ── */}
         <div style={{ marginBottom: 18 }}>
@@ -805,7 +866,18 @@ export default function DetailPanel({
                   disabled={enriching}
                   onClick={async () => {
                     if (enriching || !company.domain) return;
+                    const cacheKey = `${company.domain}:${opt.key}`;
+                    // Check cache first
+                    const cached = enrichCacheRef.current.get(cacheKey);
+                    if (cached) {
+                      setEnrichedData(cached);
+                      setLastEnrichType(opt.key);
+                      setIsCachedResult(true);
+                      setEnrichMsg('');
+                      return;
+                    }
                     setEnriching(true);
+                    setIsCachedResult(false);
                     setEnrichMsg(`Searching ${opt.label.slice(2)}...`);
                     try {
                       const res = await fetch('/api/enrich', {
@@ -818,6 +890,9 @@ export default function DetailPanel({
                         setEnrichMsg(data.error);
                       } else if (data.enrichedData && Object.keys(data.enrichedData).filter(k => !k.startsWith('_') && data.enrichedData[k]).length > 0) {
                         setEnrichedData(data.enrichedData);
+                        setLastEnrichType(opt.key);
+                        setIsCachedResult(false);
+                        enrichCacheRef.current.set(cacheKey, data.enrichedData);
                         setEnrichMsg('');
                       } else {
                         setEnrichMsg('No data found for this category.');
@@ -857,8 +932,53 @@ export default function DetailPanel({
 
         {/* Enriched Data — shown inline after enrichment */}
         {enrichedData && Object.keys(enrichedData).filter(k => !k.startsWith('_')).length > 0 && (
-          <Section title="🏢 Enriched — Company-Wide">
+          <Section title={
+            lastEnrichType === 'pe-news' ? '🏦 PE & M&A Intel' :
+            lastEnrichType === 'recent-news' ? '📰 Recent News' :
+            lastEnrichType === 'services-pricing' ? '💰 Services & Pricing' :
+            lastEnrichType === 'location-detail' ? '📍 Location Details' :
+            '🏢 Enriched — Company-Wide'
+          }>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {isCachedResult && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+                  <span style={{ padding: '1px 6px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 9 }}>Cached</span>
+                  <button
+                    onClick={async () => {
+                      if (enriching || !company.domain) return;
+                      const cacheKey = `${company.domain}:${lastEnrichType}`;
+                      enrichCacheRef.current.delete(cacheKey);
+                      setEnriching(true);
+                      setIsCachedResult(false);
+                      setEnrichMsg(`Re-enriching...`);
+                      try {
+                        const res = await fetch('/api/enrich', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ domain: company.domain, enrichType: lastEnrichType, datasetId }),
+                        });
+                        const data = await res.json();
+                        if (data.error) {
+                          setEnrichMsg(data.error);
+                        } else if (data.enrichedData && Object.keys(data.enrichedData).filter(k => !k.startsWith('_') && data.enrichedData[k]).length > 0) {
+                          setEnrichedData(data.enrichedData);
+                          enrichCacheRef.current.set(cacheKey, data.enrichedData);
+                          setEnrichMsg('');
+                        } else {
+                          setEnrichMsg('No data found for this category.');
+                        }
+                      } catch {
+                        setEnrichMsg('Re-enrichment failed.');
+                      } finally {
+                        setEnriching(false);
+                      }
+                    }}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--acc)', fontSize: 10, fontWeight: 500, fontFamily: "'Syne', system-ui, sans-serif" }}
+                  >
+                    Re-enrich &rarr;
+                  </button>
+                </div>
+              )}
               <EnrichedFields data={enrichedData} />
               <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>
                 Enriched {new Date().toLocaleTimeString()}
@@ -1167,6 +1287,84 @@ function EnrichedFields({ data }: { data: Record<string, unknown> }) {
   return <>{items}</>;
 }
 
+/* ── Hierarchy Level ── */
+
+function HierarchyLevel({
+  level,
+  name,
+  icon,
+  color,
+  isTop,
+  isBottom,
+  isCurrent,
+}: {
+  level: string;
+  name: string;
+  icon: string;
+  color: string;
+  isTop?: boolean;
+  isBottom?: boolean;
+  isCurrent?: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+      {/* Vertical connector line */}
+      <div style={{ width: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{
+          width: 2,
+          flex: 1,
+          background: isTop ? 'transparent' : 'var(--bd2)',
+        }} />
+        <div style={{
+          width: 10,
+          height: 10,
+          borderRadius: '50%',
+          background: isCurrent ? color : 'var(--bg3)',
+          border: `2px solid ${color}`,
+          flexShrink: 0,
+        }} />
+        <div style={{
+          width: 2,
+          flex: 1,
+          background: isBottom ? 'transparent' : 'var(--bd2)',
+        }} />
+      </div>
+
+      {/* Content */}
+      <div style={{
+        flex: 1,
+        padding: '6px 10px',
+        margin: '2px 0',
+        borderRadius: 6,
+        background: isCurrent ? 'rgba(176,125,16,0.04)' : 'transparent',
+        border: isCurrent ? '1px solid rgba(176,125,16,0.15)' : '1px solid transparent',
+      }}>
+        <div style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 8,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          color: color,
+          marginBottom: 1,
+        }}>
+          {icon} {level}
+        </div>
+        <div style={{
+          fontSize: 12,
+          fontWeight: isCurrent ? 700 : 500,
+          color: isCurrent ? 'var(--tx)' : 'var(--tx2)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {name}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Sub-components ── */
 
 function Badge({ text, bg }: { text: string; bg: string }) {
@@ -1248,8 +1446,8 @@ function LocationRow({ location }: { location: Location }) {
         >
           {location.name}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--tx3)' }}>
-          {[location.city, location.state].filter(Boolean).join(', ')}
+        <div style={{ fontSize: 10, color: 'var(--tx3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {location.address ? `${location.address}, ` : ''}{[location.city, location.state].filter(Boolean).join(', ')}
         </div>
       </div>
       {location.rating !== null && (

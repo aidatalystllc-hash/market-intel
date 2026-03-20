@@ -13,7 +13,7 @@ interface SearchBarProps {
 const FOOTPRINT_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   national: { bg: 'rgba(176,58,26,0.10)', color: 'var(--nat)', label: 'NAT' },
   regional: { bg: 'rgba(26,79,150,0.10)', color: 'var(--reg)', label: 'REG' },
-  local: { bg: 'rgba(26,112,64,0.10)', color: 'var(--loc)', label: 'LOC' },
+  local: { bg: 'rgba(26,112,64,0.10)', color: 'var(--loc)', label: 'SNGL' },
 };
 
 export default function SearchBar({ companies, onSelect, isOpen, onClose }: SearchBarProps) {
@@ -49,11 +49,15 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
+  // Search results: includes both company-level and location-level matches
   const results = useMemo(() => {
     if (!debouncedQuery.trim()) return [];
     const q = debouncedQuery.toLowerCase().trim();
-    return companies.filter((c) => {
-      return (
+    const items: { company: Company; locMatch?: string }[] = [];
+
+    for (const c of companies) {
+      // Company-level match
+      const companyMatch =
         c.name.toLowerCase().includes(q) ||
         c.city.toLowerCase().includes(q) ||
         c.state.toLowerCase().includes(q) ||
@@ -62,10 +66,24 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         c.services.some((s) => s.toLowerCase().includes(q)) ||
         c.executiveName.toLowerCase().includes(q) ||
         c.parentCompany.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.locations.some((l) => l.name.toLowerCase().includes(q))
-      );
-    }).slice(0, 30);
+        c.description.toLowerCase().includes(q);
+
+      if (companyMatch) {
+        items.push({ company: c });
+      }
+
+      // Location-level matches (show specific locations that match)
+      for (const loc of c.locations) {
+        const locText = `${loc.name} ${loc.address} ${loc.city} ${loc.state}`.toLowerCase();
+        if (locText.includes(q) && !companyMatch) {
+          items.push({ company: c, locMatch: loc.name || `${loc.city}, ${loc.state}` });
+        }
+      }
+
+      if (items.length >= 30) break;
+    }
+
+    return items.slice(0, 30);
   }, [debouncedQuery, companies]);
 
   const handleSelect = useCallback(
@@ -86,7 +104,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         setActiveIndex((prev) => Math.max(prev - 1, -1));
       } else if (e.key === 'Enter' && activeIndex >= 0 && results[activeIndex]) {
         e.preventDefault();
-        handleSelect(results[activeIndex]);
+        handleSelect(results[activeIndex].company);
       }
     },
     [results, activeIndex, handleSelect]
@@ -155,7 +173,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
               setActiveIndex(-1);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search companies, cities, services, PE firms, executives..."
+            placeholder="Search companies, locations, cities, services, PE firms..."
             style={{
               width: '100%',
               padding: '10px 14px',
@@ -207,12 +225,13 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                   </div>
                 </div>
               ) : (
-                results.map((company, i) => {
+                results.map((item, i) => {
+                  const company = item.company;
                   const fp = FOOTPRINT_STYLES[company.footprint] || FOOTPRINT_STYLES.local;
                   const isActive = i === activeIndex;
                   return (
                     <div
-                      key={company.id}
+                      key={`${company.id}-${item.locMatch || 'co'}-${i}`}
                       onClick={() => handleSelect(company)}
                       style={{
                         display: 'flex',
@@ -263,6 +282,11 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                         }}
                       >
                         {company.name}
+                        {item.locMatch && (
+                          <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--tx3)', marginLeft: 4 }}>
+                            📍 {item.locMatch}
+                          </span>
+                        )}
                       </span>
 
                       {/* City/State */}

@@ -418,11 +418,11 @@ const STEPS: TourStep[] = [
         }}
       >
         {[
-          { icon: '➕ ➖', label: 'Zoom in / out', sub: 'Top-right buttons' },
-          { icon: '⊕', label: 'Reset view', sub: 'Fit all data' },
+          { icon: '➕ ➖', label: 'Zoom in / out', sub: 'Top-right map buttons' },
+          { icon: '🏢 📍', label: 'Company / Location', sub: 'Toggle map view mode' },
           { icon: '🌡️', label: 'Density heatmap', sub: 'Top-left toggle' },
-          { icon: '🗺️', label: 'Minimap', sub: 'Bottom-right, click to jump' },
           { icon: '🖨️', label: 'Export PDF', sub: 'Print-ready report' },
+          { icon: '🔍', label: 'Search', sub: 'Cmd+K or click magnifying glass' },
           { icon: '❓', label: 'Reopen this tour', sub: '"?" button in header' },
         ].map((item) => (
           <div

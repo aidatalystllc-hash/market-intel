@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import type { Company, Location } from '@/lib/types';
 import { ACCENT_COLOR } from '@/lib/types';
 import { formatRevenue } from '@/lib/formatters';
+
+// Module-level enrichment cache shared across component instances
+const locationEnrichCache = new Map<string, Record<string, unknown>>();
+const companyEnrichCache = new Map<string, string>();
 
 /* ── Helpers ── */
 
@@ -138,7 +142,16 @@ export default function LocationDetailPanel({
       }
     }
 
-    return competitors.sort((a, b) => a.distKm - b.distKm);
+    // Deduplicate: same name + same address = same location
+    const seen = new Set<string>();
+    const deduped = competitors.filter((c) => {
+      const key = `${c.loc.name}|${c.loc.address}|${c.loc.lat.toFixed(4)}|${c.loc.lng.toFixed(4)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return deduped.sort((a, b) => a.distKm - b.distKm);
   }, [location, parentCompany.id, allCompanies, distFilter]);
 
   // Competitor ranking stats
@@ -327,7 +340,7 @@ export default function LocationDetailPanel({
             display: 'block',
           }}
         >
-          Tap to view full company profile &rarr;
+          Click here to view full company profile &rarr;
         </button>
 
         {/* ── THIS LOCATION ── */}
@@ -402,13 +415,13 @@ export default function LocationDetailPanel({
             }}
           >
             <div>
-              <div style={labelStyle}>Employees</div>
+              <div style={labelStyle}>Est. Employees</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>
                 {parentCompany.employeeSize || (parentCompany.employees ? `~${parentCompany.employees.toLocaleString()}` : '—')}
               </div>
             </div>
             <div>
-              <div style={labelStyle}>Revenue</div>
+              <div style={labelStyle}>Est. Revenue</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>
                 {formatRevenue(parentCompany.revenue)}
               </div>
@@ -624,11 +637,25 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
+  const [isCached, setIsCached] = useState(false);
 
-  const handleEnrich = async () => {
+  const cacheKey = `${domain}:location-detail:${locationName}`;
+
+  const handleEnrich = async (forceRefresh = false) => {
     if (loading) return;
+    // Check cache
+    if (!forceRefresh) {
+      const cached = locationEnrichCache.get(cacheKey);
+      if (cached) {
+        setResult(cached);
+        setIsCached(true);
+        setError('');
+        return;
+      }
+    }
     setLoading(true);
     setError('');
+    setIsCached(false);
     try {
       const res = await fetch('/api/enrich', {
         method: 'POST',
@@ -639,6 +666,7 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
       if (data.error) { setError(data.error); }
       else if (data.enrichedData && Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]).length > 0) {
         setResult(data.enrichedData);
+        locationEnrichCache.set(cacheKey, data.enrichedData);
       } else { setError('No location-specific data found.'); }
     } catch { setError('Enrichment failed.'); }
     finally { setLoading(false); }
@@ -646,7 +674,7 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
 
   return (
     <div>
-      <button onClick={handleEnrich} disabled={loading} style={{
+      <button onClick={() => handleEnrich(false)} disabled={loading} style={{
         width: '100%', padding: '9px 0', border: '1px solid #1a7040', borderRadius: 6,
         background: loading ? 'var(--bg3)' : 'rgba(26,112,64,0.04)', color: '#1a7040',
         fontSize: 12, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
@@ -657,7 +685,15 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
       {error && <div style={{ fontSize: 10, color: 'var(--tx2)', marginTop: 4, textAlign: 'center' }}>{error}</div>}
       {result && (
         <div style={{ marginTop: 8, padding: 10, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 6 }}>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>📍 Location Data Found</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data Found</span>
+            {isCached && (
+              <>
+                <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
+                <button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
+              </>
+            )}
+          </div>
           {!!result.local_phone && <div style={{ fontSize: 11, marginBottom: 3 }}>📞 {String(result.local_phone)}</div>}
           {!!result.hours && <div style={{ fontSize: 11, marginBottom: 3 }}>🕐 {String(result.hours).slice(0, 150)}</div>}
           {!!result.local_address && <div style={{ fontSize: 11, marginBottom: 3 }}>📍 {String(result.local_address)}</div>}
@@ -686,11 +722,24 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
 function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { domain: string; enrichType: string; label: string; desc: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [isCached, setIsCached] = useState(false);
 
-  const handleEnrich = async () => {
+  const cacheKey = `${domain}:${enrichType}`;
+
+  const handleEnrich = async (forceRefresh = false) => {
     if (loading) return;
+    // Check cache
+    if (!forceRefresh) {
+      const cached = companyEnrichCache.get(cacheKey);
+      if (cached) {
+        setResult(cached);
+        setIsCached(true);
+        return;
+      }
+    }
     setLoading(true);
     setResult(null);
+    setIsCached(false);
     try {
       const res = await fetch('/api/enrich', {
         method: 'POST',
@@ -701,7 +750,9 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
       if (data.error) { setResult(data.error); }
       else if (data.enrichedData) {
         const fields = Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]);
-        setResult(fields.length > 0 ? `Found: ${fields.join(', ')}` : 'No data found.');
+        const msg = fields.length > 0 ? `Found: ${fields.join(', ')}` : 'No data found.';
+        setResult(msg);
+        if (fields.length > 0) companyEnrichCache.set(cacheKey, msg);
       } else { setResult('No data found.'); }
     } catch { setResult('Failed.'); }
     finally { setLoading(false); }
@@ -709,7 +760,7 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
 
   return (
     <div>
-      <button onClick={handleEnrich} disabled={loading} style={{
+      <button onClick={() => handleEnrich(false)} disabled={loading} style={{
         width: '100%', padding: '7px 6px', border: '1px solid var(--bd)', borderRadius: 5,
         background: 'var(--bg3)', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.5 : 1,
         textAlign: 'left',
@@ -717,7 +768,17 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx)' }}>{loading ? '⟳...' : label}</div>
         <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
       </button>
-      {result && <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, textAlign: 'center' }}>{result}</div>}
+      {result && (
+        <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, textAlign: 'center' }}>
+          {result}
+          {isCached && (
+            <>
+              {' '}<span style={{ padding: '0 4px', borderRadius: 2, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontSize: 8 }}>Cached</span>
+              {' '}<button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

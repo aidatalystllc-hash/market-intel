@@ -112,7 +112,7 @@ export default function StrategyChart({ companies, onSelect }: StrategyChartProp
     const labels: Record<string, string> = {
       national: 'National',
       regional: 'Regional',
-      local: 'Local',
+      local: 'Single Loc',
     };
 
     // Exclude companies with null values for selected axes

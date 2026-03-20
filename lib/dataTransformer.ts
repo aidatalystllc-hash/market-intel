@@ -174,8 +174,9 @@ export function transformCompanies(
       : [];
 
     // Location count
+    // Prefer actual matched locations count; fall back to raw column only if no locations matched
     const locationCountRaw = toNum(getMapped(row, companyMapping, 'location_count'));
-    const locationCount = locationCountRaw ?? (locations.length || 1);
+    const locationCount = locations.length > 0 ? locations.length : (locationCountRaw ?? 1);
 
     // Ratings from locations or company data
     const companyRating = toNum(getMapped(row, companyMapping, 'rating'));
