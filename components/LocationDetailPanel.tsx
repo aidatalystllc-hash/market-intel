@@ -102,9 +102,9 @@ function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unkn
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 250, overflowY: 'auto', overflowX: 'hidden', wordBreak: 'break-word', minWidth: 0 }}>
       {entries.map(([key, value]) => (
-        <div key={key}>
+        <div key={key} style={{ minWidth: 0 }}>
           <div style={{
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 8,
@@ -155,22 +155,21 @@ function EnrichedFieldValue({ value: rawValue, accentColor }: { value: unknown; 
       );
     }
 
-    // Array of objects — compact rows
+    // Array of objects — compact wrapped rows
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         {(value as Record<string, unknown>[]).slice(0, 5).map((item, i) => {
           const vals = Object.entries(item).filter(([, v]) => v != null && v !== '');
-          // Show as a single compact line: "Name — $price — details"
-          const parts = vals.map(([, v]) => typeof v === 'string' ? v.slice(0, 80) : String(v));
+          const parts = vals.map(([, v]) => typeof v === 'string' ? v.slice(0, 60) : String(v));
           return (
             <div key={i} style={{
               padding: '3px 6px', borderRadius: 3, fontSize: 10,
               background: `${accentColor}06`, border: `1px solid ${accentColor}12`,
               color: 'var(--tx2)', lineHeight: 1.3,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              wordBreak: 'break-word', minWidth: 0,
             }}>
               <span style={{ fontWeight: 600, color: 'var(--tx)' }}>{parts[0]}</span>
-              {parts.length > 1 && <span> — {parts.slice(1).join(' · ')}</span>}
+              {parts.length > 1 && <span style={{ fontSize: 9 }}> — {parts.slice(1).join(' · ')}</span>}
             </div>
           );
         })}
@@ -181,10 +180,10 @@ function EnrichedFieldValue({ value: rawValue, accentColor }: { value: unknown; 
     );
   }
 
-  // Plain string / number — truncate long text
+  // Plain string / number
   if (typeof value === 'string' || typeof value === 'number') {
     const str = String(value);
-    return <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.3 }}>{str.length > 200 ? str.slice(0, 200) + '...' : str}</div>;
+    return <div style={{ fontSize: 10, color: 'var(--tx2)', lineHeight: 1.3, wordBreak: 'break-word', minWidth: 0 }}>{str.length > 150 ? str.slice(0, 150) + '...' : str}</div>;
   }
 
   // Object (non-array)
@@ -923,15 +922,13 @@ function LocationEnrichButton({ domain, enrichType, label, desc, locationName, l
       )}
       {/* Collapsible result */}
       {result && expanded && (
-        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-            {isCached && (
-              <>
-                <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
-                <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
-              </>
-            )}
-          </div>
+        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 5, overflow: 'hidden', minWidth: 0 }}>
+          {isCached && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+              <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
+              <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
+            </div>
+          )}
           <EnrichedDataRenderer data={result} accentColor="#1a7040" />
         </div>
       )}
@@ -1037,15 +1034,13 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         </div>
       )}
       {result && expanded && (
-        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-            {isCached && (
-              <>
-                <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
-                <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
-              </>
-            )}
-          </div>
+        <div style={{ marginTop: 3, padding: 6, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 5, overflow: 'hidden', minWidth: 0 }}>
+          {isCached && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+              <span style={{ padding: '1px 4px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 7 }}>Cached</span>
+              <button onClick={(e) => { e.stopPropagation(); handleEnrich(true); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 8, fontWeight: 500 }}>Re-enrich</button>
+            </div>
+          )}
           <EnrichedDataRenderer data={result} accentColor="#1a4f96" />
         </div>
       )}
