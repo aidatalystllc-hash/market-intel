@@ -119,33 +119,6 @@ export default function DetailPanel({
     return () => clearTimeout(timer);
   }, [company?.id, company?.score, company]);
 
-  // Top competitors: ranked by relevance (overlapping states, similar size)
-  // Must be before any early returns to satisfy Rules of Hooks
-  const topCompetitors = useMemo(() => {
-    if (!company) return [];
-    const companyStates = new Set();
-    if (company.state) companyStates.add(company.state.toLowerCase());
-    company.locations.forEach((l) => { if (l.state) companyStates.add(l.state.toLowerCase()); });
-
-    return allCompanies
-      .filter((c) => c.id !== company.id)
-      .map((c) => {
-        let score = 0;
-        const cStates = new Set();
-        if (c.state) cStates.add(c.state.toLowerCase());
-        c.locations.forEach((l) => { if (l.state) cStates.add(l.state.toLowerCase()); });
-        const overlap = Array.from(companyStates).filter((s) => cStates.has(s)).length;
-        score += overlap * 10;
-        const locDiff = Math.abs(c.locationCount - company.locationCount);
-        score += Math.max(0, 20 - locDiff);
-        if (c.footprint === company.footprint) score += 5;
-        return { company: c, score };
-      })
-      .filter((c) => c.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 8);
-  }, [company, allCompanies]);
-
   if (!company) {
     return (
       <div
@@ -734,75 +707,6 @@ export default function DetailPanel({
                     }
                   }}
                 />
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* ── Top Competitors (Company-Wide) ── */}
-        {topCompetitors.length > 0 && (
-          <Section title="Top Competitors">
-            <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
-              Companies with overlapping markets and similar scale.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {topCompetitors.map(({ company: c }) => (
-                <button
-                  key={c.id}
-                  onClick={() => onSelectCompany(c)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    padding: '6px 10px',
-                    border: '1px solid var(--bd)',
-                    borderRadius: 6,
-                    background: 'var(--bg)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    width: '100%',
-                    fontFamily: "'Syne', system-ui, sans-serif",
-                    transition: 'border-color 0.15s, background 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--acc)';
-                    e.currentTarget.style.background = 'var(--highlight)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--bd)';
-                    e.currentTarget.style.background = 'var(--bg)';
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: 'var(--tx)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {c.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--tx3)' }}>
-                      {[c.city, c.state].filter(Boolean).join(', ')}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontFamily: "'JetBrains Mono', monospace",
-                      color: 'var(--tx3)',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {c.locationCount} loc{c.locationCount !== 1 ? 's' : ''}
-                  </div>
-                </button>
               ))}
             </div>
           </Section>
