@@ -535,6 +535,9 @@ function DashboardPage() {
       <SearchBar
         companies={companies}
         onSelect={handleSelect}
+        onSelectLocation={(company, location) => {
+          handleLocationClick({ location, parentCompany: company });
+        }}
         isOpen={searchOpen}
         onClose={() => setSearchOpen(false)}
       />
@@ -586,6 +589,9 @@ function DashboardPage() {
         allCompanies={companies}
         onClose={() => setSelectedCompany(null)}
         onSelectCompany={handleSelect}
+        onSelectLocation={(company, location) => {
+          handleLocationClick({ location, parentCompany: company });
+        }}
         datasetId={datasetId}
       />
 

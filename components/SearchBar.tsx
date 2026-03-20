@@ -1,11 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { Company } from '@/lib/types';
+import type { Company, Location } from '@/lib/types';
+
+interface SearchResult {
+  company: Company;
+  type: 'company' | 'location';
+  location?: Location;
+  locDisplay?: string;
+}
 
 interface SearchBarProps {
   companies: Company[];
   onSelect: (company: Company) => void;
+  onSelectLocation?: (company: Company, location: Location) => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -16,7 +24,7 @@ const FOOTPRINT_STYLES: Record<string, { bg: string; color: string; label: strin
   local: { bg: 'rgba(26,112,64,0.10)', color: 'var(--loc)', label: 'SNGL' },
 };
 
-export default function SearchBar({ companies, onSelect, isOpen, onClose }: SearchBarProps) {
+export default function SearchBar({ companies, onSelect, onSelectLocation, isOpen, onClose }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -49,11 +57,11 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  // Search results: includes both company-level and location-level matches
+  // Search results: company-level and location-level matches with clear separation
   const results = useMemo(() => {
     if (!debouncedQuery.trim()) return [];
     const q = debouncedQuery.toLowerCase().trim();
-    const items: { company: Company; locMatch?: string }[] = [];
+    const items: SearchResult[] = [];
 
     for (const c of companies) {
       // Company-level match
@@ -69,19 +77,25 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         c.description.toLowerCase().includes(q);
 
       if (companyMatch) {
-        items.push({ company: c });
+        items.push({ company: c, type: 'company' });
       }
 
-      // Location-level matches — always show, even if company matched
-      // (so searching "Palm Beach Tan Austin" shows both the company AND the Austin location)
+      // Location-level matches — show each matching location with its specific address
       const seenLocs = new Set<string>();
       for (const loc of c.locations) {
         const locText = `${loc.name} ${loc.address} ${loc.city} ${loc.state}`.toLowerCase();
         if (locText.includes(q)) {
-          const locKey = `${loc.name}|${loc.city}`;
+          const locKey = `${loc.lat.toFixed(4)}|${loc.lng.toFixed(4)}|${loc.address}`;
           if (!seenLocs.has(locKey)) {
             seenLocs.add(locKey);
-            items.push({ company: c, locMatch: loc.name || `${loc.city}, ${loc.state}` });
+            // Build a display string: address, city, state
+            const addrParts = [loc.address, loc.city, loc.state].filter(Boolean);
+            items.push({
+              company: c,
+              type: 'location',
+              location: loc,
+              locDisplay: addrParts.join(', ') || loc.name || `${loc.city}, ${loc.state}`,
+            });
           }
         }
       }
@@ -92,12 +106,16 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
     return items.slice(0, 50);
   }, [debouncedQuery, companies]);
 
-  const handleSelect = useCallback(
-    (company: Company) => {
-      onSelect(company);
+  const handleResultClick = useCallback(
+    (result: SearchResult) => {
+      if (result.type === 'location' && result.location && onSelectLocation) {
+        onSelectLocation(result.company, result.location);
+      } else {
+        onSelect(result.company);
+      }
       onClose();
     },
-    [onSelect, onClose]
+    [onSelect, onSelectLocation, onClose]
   );
 
   const handleKeyDown = useCallback(
@@ -110,10 +128,10 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
         setActiveIndex((prev) => Math.max(prev - 1, -1));
       } else if (e.key === 'Enter' && activeIndex >= 0 && results[activeIndex]) {
         e.preventDefault();
-        handleSelect(results[activeIndex].company);
+        handleResultClick(results[activeIndex]);
       }
     },
-    [results, activeIndex, handleSelect]
+    [results, activeIndex, handleResultClick]
   );
 
   // Scroll active item into view
@@ -179,7 +197,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
               setActiveIndex(-1);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search companies, locations, cities, services, PE firms..."
+            placeholder="Search companies, addresses, cities, services, PE firms..."
             style={{
               width: '100%',
               padding: '10px 14px',
@@ -207,7 +225,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
               ref={listRef}
               style={{
                 marginTop: 8,
-                maxHeight: 340,
+                maxHeight: 400,
                 overflowY: 'auto',
                 borderRadius: 8,
                 border: '1px solid var(--bd)',
@@ -227,7 +245,7 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                     No results
                   </div>
                   <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
-                    No companies match &ldquo;{debouncedQuery}&rdquo;
+                    No companies or locations match &ldquo;{debouncedQuery}&rdquo;
                   </div>
                 </div>
               ) : (
@@ -235,19 +253,22 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                   const company = item.company;
                   const fp = FOOTPRINT_STYLES[company.footprint] || FOOTPRINT_STYLES.local;
                   const isActive = i === activeIndex;
+                  const isLocation = item.type === 'location';
+
                   return (
                     <div
-                      key={`${company.id}-${item.locMatch || 'co'}-${i}`}
-                      onClick={() => handleSelect(company)}
+                      key={`${company.id}-${item.type}-${item.location?.lat || ''}-${i}`}
+                      onClick={() => handleResultClick(item)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 10,
+                        gap: 8,
                         padding: '8px 14px',
                         cursor: 'pointer',
                         background: isActive ? 'var(--bg3)' : 'transparent',
                         borderBottom: i < results.length - 1 ? '1px solid var(--bd)' : 'none',
                         transition: 'background 0.1s',
+                        borderLeft: isLocation ? '3px solid #1a7040' : '3px solid transparent',
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = 'var(--bg3)';
@@ -257,58 +278,71 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                         if (!isActive) e.currentTarget.style.background = 'transparent';
                       }}
                     >
-                      {/* Footprint badge */}
+                      {/* Type indicator */}
                       <span
                         style={{
                           fontFamily: "'JetBrains Mono', monospace",
-                          fontSize: 9,
-                          fontWeight: 500,
-                          letterSpacing: '0.05em',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: fp.bg,
-                          color: fp.color,
+                          fontSize: 8,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          padding: '2px 5px',
+                          borderRadius: 3,
                           flexShrink: 0,
                           textTransform: 'uppercase',
+                          background: isLocation ? 'rgba(26,112,64,0.10)' : fp.bg,
+                          color: isLocation ? '#1a7040' : fp.color,
+                          minWidth: 28,
+                          textAlign: 'center',
                         }}
                       >
-                        {fp.label}
+                        {isLocation ? 'LOC' : fp.label}
                       </span>
 
-                      {/* Name */}
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          fontSize: 13,
-                          color: 'var(--tx)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          minWidth: 0,
-                        }}
-                      >
-                        {company.name}
-                        {item.locMatch && (
-                          <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--tx3)', marginLeft: 4 }}>
-                            📍 {item.locMatch}
-                          </span>
+                      {/* Name + address */}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: 13,
+                            color: 'var(--tx)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {company.name}
+                        </div>
+                        {isLocation && item.locDisplay && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: 'var(--tx3)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              marginTop: 1,
+                            }}
+                          >
+                            {item.locDisplay}
+                          </div>
                         )}
-                      </span>
-
-                      {/* City/State */}
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: 'var(--tx3)',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {[company.city, company.state].filter(Boolean).join(', ') || '—'}
-                      </span>
-
-                      {/* Spacer */}
-                      <span style={{ flex: 1 }} />
+                        {!isLocation && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: 'var(--tx3)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              marginTop: 1,
+                            }}
+                          >
+                            {company.locationCount > 1
+                              ? `Company — ${company.locationCount} locations`
+                              : [company.city, company.state].filter(Boolean).join(', ') || '—'}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Rating */}
                       {company.avgRating != null && (
@@ -320,24 +354,28 @@ export default function SearchBar({ companies, onSelect, isOpen, onClose }: Sear
                             flexShrink: 0,
                           }}
                         >
-                          {company.avgRating.toFixed(1)}
+                          {isLocation && item.location?.rating != null
+                            ? item.location.rating.toFixed(1)
+                            : company.avgRating.toFixed(1)}
                         </span>
                       )}
 
                       {/* M&A Score */}
-                      <span
-                        style={{
-                          fontFamily: "'JetBrains Mono', monospace",
-                          fontSize: 10,
-                          color: 'var(--tx3)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        M&A {company.maScore}
-                      </span>
+                      {!isLocation && (
+                        <span
+                          style={{
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontSize: 10,
+                            color: 'var(--tx3)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          M&A {company.maScore}
+                        </span>
+                      )}
 
                       {/* PE badge */}
-                      {company.isPE && (
+                      {company.isPE && !isLocation && (
                         <span
                           style={{
                             fontFamily: "'JetBrains Mono', monospace",

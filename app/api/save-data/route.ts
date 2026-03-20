@@ -25,11 +25,13 @@ export async function POST(req: NextRequest) {
     const rand = Math.random().toString(36).slice(2, 8);
     const datasetId = `${slug}-${rand}`;
 
-    // Strip heavy data to keep payload small
+    // Strip heavy data to keep payload small — but preserve ALL locations
+    // (location count accuracy is critical for the UI)
     const stripped = companies.map((c: Record<string, unknown>) => {
       const copy = { ...c };
-      if (Array.isArray(copy.locations)) {
-        copy.locations = (copy.locations as unknown[]).slice(0, 20);
+      // Keep all locations — only trim for extremely large datasets (500+ locations per company)
+      if (Array.isArray(copy.locations) && copy.locations.length > 500) {
+        copy.locations = (copy.locations as unknown[]).slice(0, 500);
       }
       if (typeof copy.description === 'string' && copy.description.length > 300) {
         copy.description = copy.description.slice(0, 300);

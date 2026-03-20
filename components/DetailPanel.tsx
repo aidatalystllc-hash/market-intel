@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Company, Location } from '@/lib/types';
 import { FOOTPRINT_COLORS, PE_COLOR, ACCENT_COLOR } from '@/lib/types';
 import { getMALabel } from '@/lib/maScoreCalc';
@@ -19,16 +19,14 @@ function formatUSPhone(phone: string): string {
   return phone;
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function getStatesServedLabel(company: Company): string {
+  const states = new Set();
+  if (company.state) states.add(company.state.toLowerCase());
+  company.locations.forEach((l) => { if (l.state) states.add(l.state.toLowerCase()); });
+  const count = states.size;
+  if (count >= 10) return `Nationwide (${count} states)`;
+  if (count >= 2) return `${count} states`;
+  return company.state || '—';
 }
 
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
@@ -79,6 +77,7 @@ interface DetailPanelProps {
   allCompanies: Company[];
   onClose: () => void;
   onSelectCompany: (company: Company) => void;
+  onSelectLocation?: (company: Company, location: Location) => void;
   datasetId?: string | null;
 }
 
@@ -92,6 +91,7 @@ export default function DetailPanel({
   allCompanies,
   onClose,
   onSelectCompany,
+  onSelectLocation,
   datasetId,
 }: DetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -119,6 +119,33 @@ export default function DetailPanel({
     return () => clearTimeout(timer);
   }, [company?.id, company?.score, company]);
 
+  // Top competitors: ranked by relevance (overlapping states, similar size)
+  // Must be before any early returns to satisfy Rules of Hooks
+  const topCompetitors = useMemo(() => {
+    if (!company) return [];
+    const companyStates = new Set();
+    if (company.state) companyStates.add(company.state.toLowerCase());
+    company.locations.forEach((l) => { if (l.state) companyStates.add(l.state.toLowerCase()); });
+
+    return allCompanies
+      .filter((c) => c.id !== company.id)
+      .map((c) => {
+        let score = 0;
+        const cStates = new Set();
+        if (c.state) cStates.add(c.state.toLowerCase());
+        c.locations.forEach((l) => { if (l.state) cStates.add(l.state.toLowerCase()); });
+        const overlap = Array.from(companyStates).filter((s) => cStates.has(s)).length;
+        score += overlap * 10;
+        const locDiff = Math.abs(c.locationCount - company.locationCount);
+        score += Math.max(0, 20 - locDiff);
+        if (c.footprint === company.footprint) score += 5;
+        return { company: c, score };
+      })
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+  }, [company, allCompanies]);
+
   if (!company) {
     return (
       <div
@@ -136,25 +163,6 @@ export default function DetailPanel({
   const ma = getMALabel(company.maScore);
   const barColor =
     company.maScore >= 70 ? '#1a7040' : company.maScore >= 40 ? ACCENT_COLOR : '#b03a1a';
-
-  // Nearby competitors: within 80 km, sorted by distance
-  const nearby =
-    company.lat !== null && company.lng !== null
-      ? allCompanies
-          .filter(
-            (c) =>
-              c.id !== company.id &&
-              c.lat !== null &&
-              c.lng !== null &&
-              haversineKm(company.lat!, company.lng!, c.lat!, c.lng!) <= 80
-          )
-          .map((c) => ({
-            company: c,
-            dist: haversineKm(company.lat!, company.lng!, c.lat!, c.lng!),
-          }))
-          .sort((a, b) => a.dist - b.dist)
-          .slice(0, 8)
-      : [];
 
   // M&A breakdown factors
   const maFactors: { name: string; met: boolean }[] = [
@@ -182,12 +190,7 @@ export default function DetailPanel({
     },
     {
       label: 'States Served',
-      value:
-        company.footprint === 'national'
-          ? 'Nationwide'
-          : company.footprint === 'regional'
-          ? 'Multi-state'
-          : company.state || '—',
+      value: getStatesServedLabel(company),
     },
     {
       label: 'Est. Employees',
@@ -272,31 +275,31 @@ export default function DetailPanel({
         </button>
       </div>
 
-      {/* ── Scope Banner: COMPANY-WIDE ── */}
+      {/* ── Scope Banner: COMPANY-WIDE (very prominent) ── */}
       <div style={{
-        margin: '0 14px 8px',
-        padding: '6px 12px',
-        background: 'linear-gradient(135deg, rgba(26,79,150,0.06), rgba(26,79,150,0.02))',
-        border: '1px solid rgba(26,79,150,0.15)',
-        borderRadius: 6,
+        margin: '0 0 8px',
+        padding: '10px 16px',
+        background: 'linear-gradient(135deg, #1a4f96, #2a6fc6)',
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
       }}>
-        <span style={{ fontSize: 13 }}>🏢</span>
-        <span style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: '#1a4f96',
-        }}>
-          Company-Wide Profile
-        </span>
-        <span style={{ fontSize: 9, color: 'var(--tx3)', marginLeft: 'auto' }}>
-          All locations &middot; {company.locationCount || 1} total
-        </span>
+        <span style={{ fontSize: 16 }}>🏢</span>
+        <div>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#fff',
+          }}>
+            Company Profile
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 1 }}>
+            All {company.locationCount || 1} locations &middot; Company-wide data
+          </div>
+        </div>
       </div>
 
       {/* ── Content wrapper ── */}
@@ -520,8 +523,8 @@ export default function DetailPanel({
         </Section>
 
         {/* ── PE Ownership ── */}
-        {company.isPE && company.peFirm && (
-          <Section title="PE Ownership">
+        <Section title="PE Ownership">
+          {company.isPE && company.peFirm ? (
             <div
               style={{
                 background: 'rgba(122,16,80,0.06)',
@@ -551,8 +554,30 @@ export default function DetailPanel({
                 </div>
               </div>
             </div>
-          </Section>
-        )}
+          ) : (
+            <div
+              style={{
+                background: 'rgba(26,112,64,0.05)',
+                border: '1px solid rgba(26,112,64,0.18)',
+                borderRadius: 8,
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 16 }}>&#10003;</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1a7040' }}>
+                  Independent / Not PE-Backed
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--tx3)', marginTop: 2 }}>
+                  {company.isFamily ? 'Family-owned or independently operated' : 'No private equity investors identified'}
+                </div>
+              </div>
+            </div>
+          )}
+        </Section>
 
         {/* ── Company Hierarchy ── */}
         <Section title="Company Hierarchy">
@@ -686,10 +711,13 @@ export default function DetailPanel({
 
         {/* ── Locations ── */}
         {company.locations && company.locations.length > 0 && (
-          <Section title={`Locations (${company.locations.length})`}>
+          <Section title={`Locations (${company.locationCount || company.locations.length})`}>
+            <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 6 }}>
+              Click any location to view its detailed profile.
+            </div>
             <div
               style={{
-                maxHeight: 180,
+                maxHeight: 340,
                 overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
@@ -697,17 +725,28 @@ export default function DetailPanel({
               }}
             >
               {company.locations.map((loc, i) => (
-                <LocationRow key={`${loc.name}-${i}`} location={loc} />
+                <LocationRow
+                  key={`${loc.name}-${i}`}
+                  location={loc}
+                  onClick={() => {
+                    if (onSelectLocation) {
+                      onSelectLocation(company, loc);
+                    }
+                  }}
+                />
               ))}
             </div>
           </Section>
         )}
 
-        {/* ── Nearby Competitors ── */}
-        {nearby.length > 0 && (
-          <Section title="Nearby Competitors">
+        {/* ── Top Competitors (Company-Wide) ── */}
+        {topCompetitors.length > 0 && (
+          <Section title="Top Competitors">
+            <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
+              Companies with overlapping markets and similar scale.
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {nearby.map(({ company: c, dist }) => (
+              {topCompetitors.map(({ company: c }) => (
                 <button
                   key={c.id}
                   onClick={() => onSelectCompany(c)}
@@ -761,7 +800,7 @@ export default function DetailPanel({
                       flexShrink: 0,
                     }}
                   >
-                    {(() => { const mi = dist * 0.621371; return mi < 0.1 ? '<0.1' : mi.toFixed(1); })()} mi
+                    {c.locationCount} loc{c.locationCount !== 1 ? 's' : ''}
                   </div>
                 </button>
               ))}
@@ -830,30 +869,54 @@ export default function DetailPanel({
           </Section>
         )}
 
-        {/* ── Actions ── */}
-        <Section title="Actions">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {company.linkedinUrl && (
-              <ActionButton
-                href={company.linkedinUrl}
-                label="LinkedIn"
-                icon="\ud83d\udcbc"
-              />
-            )}
-            {company.domain && (
-              <ActionButton
-                href={`https://${company.domain}`}
-                label="Website"
-                icon="\ud83c\udf10"
-              />
-            )}
-            {/* Enrich options */}
-            <div style={{ fontSize: 10, color: '#1a4f96', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>
-              🏢 Enrich Company-Wide Data
+        {/* ── Links ── */}
+        {(company.linkedinUrl || company.domain) && (
+          <Section title="Links">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {company.linkedinUrl && (
+                <ActionButton
+                  href={company.linkedinUrl}
+                  label="LinkedIn"
+                  icon="\ud83d\udcbc"
+                />
+              )}
+              {company.domain && (
+                <ActionButton
+                  href={`https://${company.domain}`}
+                  label="Website"
+                  icon="\ud83c\udf10"
+                />
+              )}
             </div>
-            <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
-              Scrapes {company.domain} for data about the entire company — not a specific location.
-            </div>
+          </Section>
+        )}
+
+        {/* ── Company-Wide Enrichment (blue-themed, clearly separate) ── */}
+        <div style={{
+          margin: '0 0 18px',
+          padding: 14,
+          background: 'linear-gradient(135deg, rgba(26,79,150,0.04), rgba(26,79,150,0.01))',
+          border: '2px solid rgba(26,79,150,0.15)',
+          borderRadius: 10,
+        }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#1a4f96',
+            marginBottom: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            <span style={{ fontSize: 14 }}>🏢</span>
+            Enrich Company-Wide Data
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
+            Searches {company.domain} for data about the entire company — all locations.
+          </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               {([
                 { key: 'pe-news', label: '🏦 PE & M&A', desc: 'Investors, acquisitions' },
@@ -927,8 +990,7 @@ export default function DetailPanel({
             <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 8, textAlign: 'center', lineHeight: 1.4, fontStyle: 'italic' }}>
               Limit: ~5 enrichments per minute. Wait a few seconds between clicks for best results.
             </div>
-          </div>
-        </Section>
+        </div>
 
         {/* Enriched Data — shown inline after enrichment */}
         {enrichedData && Object.keys(enrichedData).filter(k => !k.startsWith('_')).length > 0 && (
@@ -1397,15 +1459,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function LocationRow({ location }: { location: Location }) {
-  const hasCoords = isFinite(location.lat) && isFinite(location.lng);
+function LocationRow({ location, onClick }: { location: Location; onClick?: () => void }) {
   const handleClick = () => {
-    if (!hasCoords) return;
-    window.dispatchEvent(
-      new CustomEvent('panToLocation', {
-        detail: { lat: location.lat, lng: location.lng },
-      })
-    );
+    if (onClick) {
+      onClick();
+    } else {
+      const hasCoords = isFinite(location.lat) && isFinite(location.lng);
+      if (!hasCoords) return;
+      window.dispatchEvent(
+        new CustomEvent('panToLocation', {
+          detail: { lat: location.lat, lng: location.lng },
+        })
+      );
+    }
   };
 
   return (

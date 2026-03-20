@@ -101,10 +101,10 @@ interface LocationDetailPanelProps {
 }
 
 const DISTANCE_FILTERS = [
-  { label: '< 1 mi', miles: 1.1 },
-  { label: '< 5 mi', miles: 5.1 },
-  { label: '< 10 mi', miles: 10.1 },
-  { label: '< 25 mi', miles: 25.1 },
+  { label: '< 1 mi', miles: 1.0 },
+  { label: '< 5 mi', miles: 5.0 },
+  { label: '< 10 mi', miles: 10.0 },
+  { label: '< 25 mi', miles: 25.0 },
   { label: 'All', miles: Infinity },
 ];
 
@@ -118,7 +118,7 @@ export default function LocationDetailPanel({
   datasetId,
 }: LocationDetailPanelProps) {
   const { location, parentCompany } = data;
-  const [distFilter, setDistFilter] = useState(25.1);
+  const [distFilter, setDistFilter] = useState(25.0);
 
   // Build nearby competitor locations from all companies
   const nearbyCompetitors = useMemo(() => {
@@ -136,7 +136,7 @@ export default function LocationDetailPanel({
         if (!isFinite(loc2.lat) || !isFinite(loc2.lng)) continue;
         const distKm = haversineKm(location.lat, location.lng, loc2.lat, loc2.lng);
         const distMi = kmToMiles(distKm);
-        if (distFilter === Infinity || distMi <= distFilter) {
+        if (distFilter === Infinity || distMi < distFilter) {
           competitors.push({ company: c, loc: loc2, distKm });
         }
       }
@@ -263,31 +263,31 @@ export default function LocationDetailPanel({
         </button>
       </div>
 
-      {/* ── Scope Banner: LOCATION-SPECIFIC ── */}
+      {/* ── Scope Banner: LOCATION-SPECIFIC (very prominent) ── */}
       <div style={{
-        margin: '0 14px 8px',
-        padding: '6px 12px',
-        background: 'linear-gradient(135deg, rgba(26,112,64,0.06), rgba(26,112,64,0.02))',
-        border: '1px solid rgba(26,112,64,0.15)',
-        borderRadius: 6,
+        margin: '0 0 8px',
+        padding: '10px 16px',
+        background: 'linear-gradient(135deg, #1a7040, #2a9050)',
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
       }}>
-        <span style={{ fontSize: 13 }}>📍</span>
-        <span style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: '#1a7040',
-        }}>
-          Single Location View
-        </span>
-        <span style={{ fontSize: 9, color: 'var(--tx3)', marginLeft: 'auto' }}>
-          {location.city && location.state ? `${location.city}, ${location.state}` : 'Individual branch'}
-        </span>
+        <span style={{ fontSize: 16 }}>📍</span>
+        <div>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#fff',
+          }}>
+            Location Profile
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 1 }}>
+            {location.city && location.state ? `${location.city}, ${location.state}` : 'Individual branch'} &middot; Single location data
+          </div>
+        </div>
       </div>
 
       <div style={{ padding: '6px 20px 28px' }}>
@@ -328,19 +328,33 @@ export default function LocationDetailPanel({
         <button
           onClick={() => onViewCompany(parentCompany)}
           style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
+            width: '100%',
+            padding: '8px 12px',
             cursor: 'pointer',
             fontSize: 11,
-            color: 'var(--acc)',
-            fontWeight: 500,
+            color: '#1a4f96',
+            fontWeight: 600,
             fontFamily: "'Syne', system-ui, sans-serif",
             marginBottom: 16,
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            background: 'rgba(26,79,150,0.05)',
+            border: '1.5px solid rgba(26,79,150,0.20)',
+            borderRadius: 6,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(26,79,150,0.10)';
+            e.currentTarget.style.borderColor = 'rgba(26,79,150,0.35)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(26,79,150,0.05)';
+            e.currentTarget.style.borderColor = 'rgba(26,79,150,0.20)';
           }}
         >
-          Click here to view full company profile &rarr;
+          🏢 View Full Company Profile &rarr;
         </button>
 
         {/* ── THIS LOCATION ── */}
@@ -596,31 +610,62 @@ export default function LocationDetailPanel({
           )}
         </Section>
 
-        {/* ── Location Enrichment ── */}
-        <Section title="📍 Enrich This Location">
-          <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
-            Scrapes this specific location&apos;s page for hours, local services, pricing, and amenities — not the whole company.
-          </div>
-          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} datasetId={datasetId} />
-        </Section>
-
-        {/* ── Separator + Company-Wide Enrichment ── */}
-        <div style={{ margin: '12px 0', padding: '8px 0', borderTop: '1.5px dashed var(--bd2)' }}>
+        {/* ── Location Enrichment (prominent, green-themed) ── */}
+        <div style={{
+          margin: '0 0 20px',
+          padding: 14,
+          background: 'linear-gradient(135deg, rgba(26,112,64,0.04), rgba(26,112,64,0.01))',
+          border: '2px solid rgba(26,112,64,0.20)',
+          borderRadius: 10,
+        }}>
           <div style={{
             fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 9,
-            fontWeight: 600,
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#1a7040',
+            marginBottom: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            <span style={{ fontSize: 14 }}>📍</span>
+            Enrich This Location
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
+            Searches for this specific location&apos;s page to get hours, pricing, services, and amenities for <strong style={{ color: 'var(--tx2)' }}>{location.city ? `${location.name || parentCompany.name} in ${location.city}, ${location.state}` : 'this branch'}</strong>.
+          </div>
+          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
+        </div>
+
+        {/* ── Company-Wide Enrichment (separate, blue-themed) ── */}
+        <div style={{
+          margin: '0 0 20px',
+          padding: 14,
+          background: 'linear-gradient(135deg, rgba(26,79,150,0.04), rgba(26,79,150,0.01))',
+          border: '2px solid rgba(26,79,150,0.15)',
+          borderRadius: 10,
+        }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            fontWeight: 700,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             color: '#1a4f96',
-            marginBottom: 4,
+            marginBottom: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
           }}>
-            🏢 Company-Wide Enrichment
+            <span style={{ fontSize: 14 }}>🏢</span>
+            Company-Wide Enrichment
           </div>
-          <div style={{ fontSize: 9, color: 'var(--tx3)', marginBottom: 8, lineHeight: 1.4 }}>
-            These enrich data about {parentCompany.name} as a whole — all locations nationwide.
+          <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
+            These enrich data about <strong style={{ color: 'var(--tx2)' }}>{parentCompany.name}</strong> as a whole — all locations, not just this one.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             <CompanyEnrichButton domain={parentCompany.domain} enrichType="pe-news" label="🏦 PE & M&A" desc="Investors, deals" datasetId={datasetId} />
             <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" datasetId={datasetId} />
             <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" datasetId={datasetId} />
@@ -633,13 +678,13 @@ export default function LocationDetailPanel({
 
 /* ── Enrich Button Components ── */
 
-function LocationEnrichButton({ domain, locationName, datasetId }: { domain: string; locationName: string; datasetId?: string | null }) {
+function LocationEnrichButton({ domain, locationName, locationCity, locationState, datasetId }: { domain: string; locationName: string; locationCity?: string; locationState?: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
 
-  const cacheKey = `${domain}:location-detail:${locationName}`;
+  const cacheKey = `${domain}:location-detail:${locationName}:${locationCity}:${locationState}`;
 
   const handleEnrich = async (forceRefresh = false) => {
     if (loading) return;
@@ -660,7 +705,14 @@ function LocationEnrichButton({ domain, locationName, datasetId }: { domain: str
       const res = await fetch('/api/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain, enrichType: 'location-detail', datasetId }),
+        body: JSON.stringify({
+          domain,
+          enrichType: 'location-detail',
+          locationName,
+          locationCity,
+          locationState,
+          datasetId,
+        }),
       });
       const data = await res.json();
       if (data.error) { setError(data.error); }

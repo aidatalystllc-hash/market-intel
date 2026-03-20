@@ -19,12 +19,8 @@ If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes
   'recent-news': {
     label: 'Recent News & Growth',
     pages: ['', '/news', '/press', '/blog', '/press-releases'],
-    prompt: `Extract recent news, announcements, and growth signals from this company's webpage. Return ONLY valid JSON:
-- recent_news: array of {headline, date, summary} for any news items (max 5) — always include the date
-- new_locations: string with date if mentioned (e.g., "Opened Kansas City location (March 2023)")
-- partnerships: string with date if mentioned (e.g., "Partnered with XYZ Corp (January 2024)")
-- awards: string with date if mentioned (e.g., "Chamber of Commerce award (March 2023)")
-- growth_signals: 1-2 sentences summarizing growth trajectory based on what you see, include timeframes`,
+    prompt: '', // Generated dynamically with date cutoff
+    useWebSearch: true,
   },
   'services-pricing': {
     label: 'Services & Pricing',
@@ -38,13 +34,14 @@ If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes
   },
   'location-detail': {
     label: 'This Location',
-    pages: [], // URL provided directly
+    pages: [], // URL built dynamically from location info
     prompt: `Extract location-specific details from this business location page. Return ONLY valid JSON:
 - hours: business hours (formatted nicely)
 - services_at_location: array of services available at THIS specific location
 - local_phone: phone number for this location
 - local_address: full address
-- local_pricing: any location-specific pricing
+- local_pricing: any location-specific pricing (membership tiers, session prices, packages — include ALL pricing you see)
+- membership_options: array of {name, price, benefits} if membership/subscription plans exist at this location
 - staff: array of {name, role} for any staff members listed
 - amenities: array of amenities or features at this location
 - booking_link: URL for booking/scheduling if found`,
@@ -53,13 +50,33 @@ If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes
 
 type EnrichType = keyof typeof ENRICH_TYPES;
 
+function getNewsPrompt(): string {
+  const now = new Date();
+  const sixMonthsAgo = new Date(now);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const cutoffStr = sixMonthsAgo.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const todayStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  return `You are a business news analyst. Today's date is ${todayStr}. Extract ONLY recent news from the last 6 months (since ${cutoffStr}). IMPORTANT: Do NOT include any news older than ${cutoffStr}. If a news item doesn't have a clear date, skip it. If all news is older than ${cutoffStr}, return {"recent_news": [], "growth_signals": "No recent news found in the last 6 months."}.
+
+Return ONLY valid JSON:
+- recent_news: array of {headline, date, summary} for news items from the last 6 months ONLY (max 5). Always include the date. Exclude anything before ${cutoffStr}.
+- new_locations: string with date if mentioned (e.g., "Opened Kansas City location (March 2026)")
+- partnerships: string with date if mentioned
+- awards: string with date if mentioned
+- growth_signals: 1-2 sentences summarizing recent growth trajectory based on what you see`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { domain, enrichType = 'services-pricing', locationUrl, datasetId } = body as {
+    const { domain, enrichType = 'services-pricing', locationUrl, locationName, locationCity, locationState, datasetId } = body as {
       domain: string;
       enrichType?: EnrichType;
       locationUrl?: string;
+      locationName?: string;
+      locationCity?: string;
+      locationState?: string;
       datasetId?: string;
     };
 
@@ -100,41 +117,212 @@ export async function POST(req: NextRequest) {
 
     const config = ENRICH_TYPES[enrichType] || ENRICH_TYPES['services-pricing'];
 
-    // Determine which URLs to scrape
-    let pagesToTry: string[];
-    if (enrichType === 'location-detail' && locationUrl) {
-      // For location-specific enrichment, try the provided URL directly
-      pagesToTry = [locationUrl];
+    // Build the prompt — use dynamic prompt for news
+    let prompt = '';
+    if (enrichType === 'recent-news') {
+      prompt = getNewsPrompt();
     } else {
-      pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+      prompt = config.prompt;
     }
 
-    // Try scraping pages — use the first one that returns substantial content
+    // Determine which URLs to scrape
+    let pagesToTry: string[];
     let markdown = '';
     let scrapedUrl = '';
 
-    for (const targetUrl of pagesToTry) {
+    if (enrichType === 'location-detail') {
+      // For location-specific enrichment, try to find the specific location page
+      // Strategy: Use Firecrawl search to find the location's page on the company website
+      const locationQuery = [locationName, locationCity, locationState, domain].filter(Boolean).join(' ');
+
+      // Try Firecrawl search first to find the specific location page
+      let locationPageUrl = '';
       try {
-        const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${firecrawlKey}`,
           },
-          body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
+          body: JSON.stringify({
+            query: locationQuery,
+            limit: 5,
+          }),
         });
-
-        if (scrapeRes.ok) {
-          const data = await scrapeRes.json();
-          const content = data?.data?.markdown || '';
-          if (content.length > 200) {
-            markdown = content;
-            scrapedUrl = targetUrl;
-            break;
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const results = searchData?.data || [];
+          // Look for a result on the company domain that mentions the city/location
+          for (const r of results) {
+            const url = r.url || '';
+            const content = (r.markdown || r.description || '').toLowerCase();
+            if (url.includes(domain) && (
+              (locationCity && content.includes(locationCity.toLowerCase())) ||
+              (locationName && content.includes(locationName.toLowerCase()))
+            )) {
+              locationPageUrl = url;
+              markdown = r.markdown || '';
+              scrapedUrl = url;
+              break;
+            }
+          }
+          // If no domain-specific match, try the first result that has content about this location
+          if (!locationPageUrl && results.length > 0) {
+            for (const r of results) {
+              if (r.markdown && r.markdown.length > 200) {
+                locationPageUrl = r.url || '';
+                markdown = r.markdown;
+                scrapedUrl = r.url || '';
+                break;
+              }
+            }
           }
         }
       } catch {
-        continue;
+        // Search failed, fall back to direct scraping
+      }
+
+      // If search didn't work, try common location URL patterns on the company domain
+      if (!markdown) {
+        const citySlug = (locationCity || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const stateSlug = (locationState || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const nameSlug = (locationName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+        pagesToTry = [
+          locationUrl, // Explicit URL if provided
+          `https://${domain}/locations/${citySlug}`,
+          `https://${domain}/location/${citySlug}`,
+          `https://${domain}/locations/${stateSlug}/${citySlug}`,
+          `https://${domain}/location/${stateSlug}/${citySlug}`,
+          `https://${domain}/${citySlug}`,
+          `https://${domain}/locations/${nameSlug}`,
+          `https://${domain}/locations`,
+          `https://${domain}`,
+        ].filter(Boolean) as string[];
+
+        for (const targetUrl of pagesToTry) {
+          try {
+            const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${firecrawlKey}`,
+              },
+              body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
+            });
+
+            if (scrapeRes.ok) {
+              const data = await scrapeRes.json();
+              const content = data?.data?.markdown || '';
+              // Check if this page mentions the specific city/location
+              const contentLower = content.toLowerCase();
+              const isRelevant = content.length > 200 && (
+                (locationCity && contentLower.includes(locationCity.toLowerCase())) ||
+                (locationName && contentLower.includes(locationName.toLowerCase())) ||
+                targetUrl.includes(citySlug)
+              );
+              if (isRelevant) {
+                markdown = content;
+                scrapedUrl = targetUrl;
+                break;
+              }
+              // Fallback: accept any substantial content if we've tried enough URLs
+              if (!markdown && content.length > 200) {
+                markdown = content;
+                scrapedUrl = targetUrl;
+              }
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } else if (enrichType === 'recent-news' && 'useWebSearch' in config && config.useWebSearch) {
+      // For news, try web search first to get recent results
+      const companyName = domain.replace(/\.(com|net|org|io|co)$/i, '').replace(/[.-]/g, ' ');
+      try {
+        const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${firecrawlKey}`,
+          },
+          body: JSON.stringify({
+            query: `"${companyName}" news recent ${new Date().getFullYear()}`,
+            limit: 5,
+          }),
+        });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const results = searchData?.data || [];
+          // Combine top results into a single markdown for Claude to analyze
+          const combined = results
+            .filter((r: { markdown?: string }) => r.markdown && r.markdown.length > 100)
+            .slice(0, 3)
+            .map((r: { url?: string; markdown?: string }) => `Source: ${r.url || 'unknown'}\n${(r.markdown || '').slice(0, 2000)}`)
+            .join('\n\n---\n\n');
+          if (combined.length > 200) {
+            markdown = combined;
+            scrapedUrl = 'web search results';
+          }
+        }
+      } catch {
+        // Search failed, fall back to scraping
+      }
+
+      // Fall back to scraping company website
+      if (!markdown) {
+        pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+        for (const targetUrl of pagesToTry) {
+          try {
+            const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${firecrawlKey}`,
+              },
+              body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
+            });
+            if (scrapeRes.ok) {
+              const data = await scrapeRes.json();
+              const content = data?.data?.markdown || '';
+              if (content.length > 200) {
+                markdown = content;
+                scrapedUrl = targetUrl;
+                break;
+              }
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } else {
+      // Standard enrichment — scrape company pages
+      pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+      for (const targetUrl of pagesToTry) {
+        try {
+          const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${firecrawlKey}`,
+            },
+            body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
+          });
+
+          if (scrapeRes.ok) {
+            const data = await scrapeRes.json();
+            const content = data?.data?.markdown || '';
+            if (content.length > 200) {
+              markdown = content;
+              scrapedUrl = targetUrl;
+              break;
+            }
+          }
+        } catch {
+          continue;
+        }
       }
     }
 
@@ -155,6 +343,12 @@ export async function POST(req: NextRequest) {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const client = new Anthropic({ apiKey: anthropicKey });
 
+      // For location enrichment, add location context to the prompt
+      let contextualPrompt = prompt;
+      if (enrichType === 'location-detail' && (locationCity || locationName)) {
+        contextualPrompt += `\n\nIMPORTANT: I am looking for information specifically about the ${locationName || 'location'} in ${locationCity || 'unknown city'}, ${locationState || ''}. Extract pricing, hours, and services for THIS specific location only. If you see pricing tiers or membership options, include ALL of them with their prices.`;
+      }
+
       // Try up to 2 times with a delay for rate limiting
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -163,7 +357,7 @@ export async function POST(req: NextRequest) {
             max_tokens: 1500,
             messages: [{
               role: 'user',
-              content: `${config.prompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
+              content: `${contextualPrompt}\n\nWebpage content from ${scrapedUrl}:\n${markdown.slice(0, 5000)}`,
             }],
           });
 
@@ -217,7 +411,7 @@ export async function POST(req: NextRequest) {
     let costInfo = { estimated: 0, remaining: budgetRemaining, trackingError: '', saved: false };
     if (datasetId) {
       try {
-        const { put: blobPut, list: blobList } = await import('@vercel/blob');
+        // @vercel/blob used via blobHelpers below
         const firecrawlCreditsUsed = 1;
         const FIRECRAWL_COST = 0.0053;
         const CLAUDE_IN_COST = 0.00025 / 1000;

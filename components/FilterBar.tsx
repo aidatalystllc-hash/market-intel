@@ -9,49 +9,46 @@ interface FilterBarProps {
   services: string[];
 }
 
-interface PillConfig {
-  label: string;
-  active: boolean;
-  color?: string;
-  activeBg?: string;
-  onClick: () => void;
-}
+const selectStyle: React.CSSProperties = {
+  padding: '4px 8px',
+  fontSize: 11,
+  fontFamily: "'Syne', system-ui, sans-serif",
+  fontWeight: 600,
+  border: '1.5px solid var(--bd2)',
+  borderRadius: 6,
+  background: 'var(--bg2)',
+  color: 'var(--tx2)',
+  cursor: 'pointer',
+  outline: 'none',
+  minWidth: 0,
+  maxWidth: 140,
+  transition: 'all 0.15s ease',
+  lineHeight: '20px',
+  appearance: 'none' as const,
+  WebkitAppearance: 'none' as const,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239e9488' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 6px center',
+  paddingRight: 22,
+};
 
-function Pill({ label, active, color, activeBg, onClick }: PillConfig) {
-  const baseColor = color || 'var(--tx)';
-  const bg = active ? (activeBg || baseColor) : 'transparent';
-  const border = active ? (activeBg || baseColor) : 'var(--bd2)';
-  const textColor = active
-    ? '#fff'
-    : (color || 'var(--tx2)');
+const activeSelectStyle: React.CSSProperties = {
+  ...selectStyle,
+  borderColor: 'var(--acc)',
+  background: 'rgba(176,125,16,0.06)',
+  color: 'var(--tx)',
+};
 
-  return (
-    <button
-      onClick={onClick}
-      className="fbtn"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '3px 10px',
-        fontSize: 11,
-        fontFamily: "'Syne', system-ui, sans-serif",
-        fontWeight: 600,
-        letterSpacing: '0.01em',
-        border: `1.5px solid ${border}`,
-        borderRadius: 9999,
-        background: bg,
-        color: textColor,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        transition: 'all 0.15s ease',
-        lineHeight: '18px',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+const labelStyle: React.CSSProperties = {
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 9,
+  fontWeight: 500,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: 'var(--tx3)',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+};
 
 function Separator() {
   return (
@@ -60,29 +57,10 @@ function Separator() {
         width: 1,
         height: 18,
         background: 'var(--bd2)',
-        margin: '0 6px',
+        margin: '0 4px',
         flexShrink: 0,
       }}
     />
-  );
-}
-
-function SectionLabel({ text }: { text: string }) {
-  return (
-    <span
-      style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 9,
-        fontWeight: 500,
-        letterSpacing: '0.1em',
-        textTransform: 'uppercase',
-        color: 'var(--tx3)',
-        marginRight: 4,
-        flexShrink: 0,
-      }}
-    >
-      {text}
-    </span>
   );
 }
 
@@ -113,205 +91,164 @@ export default function FilterBar({ filters, onFilter, services }: FilterBarProp
   }, [onFilter]);
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      {/* Scroll fade indicator on right edge */}
-      <div style={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 40,
-        background: 'linear-gradient(90deg, transparent, var(--bg2))',
-        pointerEvents: 'none',
-        zIndex: 2,
-      }} />
     <div
       style={{
-        height: 42,
+        minHeight: 42,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 16px',
-        paddingRight: 50,
+        padding: '6px 16px',
         background: 'var(--bg2)',
         borderBottom: '1px solid var(--bd)',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        gap: 4,
+        gap: 8,
         fontFamily: "'Syne', system-ui, sans-serif",
+        flexWrap: 'wrap',
       }}
     >
       {/* FOOTPRINT */}
-      <SectionLabel text="FOOTPRINT" />
-      <Pill
-        label="All"
-        active={filters.footprint === 'all'}
-        color="var(--tx)"
-        activeBg="var(--tx)"
-        onClick={() => onFilter({ footprint: 'all' })}
-      />
-      <Pill
-        label="National"
-        active={filters.footprint === 'national'}
-        color="var(--nat)"
-        activeBg="var(--nat)"
-        onClick={() => onFilter({ footprint: 'national' })}
-      />
-      <Pill
-        label="Regional"
-        active={filters.footprint === 'regional'}
-        color="var(--reg)"
-        activeBg="var(--reg)"
-        onClick={() => onFilter({ footprint: 'regional' })}
-      />
-      <Pill
-        label="Single Loc"
-        active={filters.footprint === 'local'}
-        color="var(--loc)"
-        activeBg="var(--loc)"
-        onClick={() => onFilter({ footprint: 'local' })}
-      />
+      <span style={labelStyle}>Footprint</span>
+      <select
+        value={filters.footprint}
+        onChange={(e) => onFilter({ footprint: e.target.value as FilterState['footprint'] })}
+        style={filters.footprint !== 'all' ? activeSelectStyle : selectStyle}
+      >
+        <option value="all">All</option>
+        <option value="local">Single Loc</option>
+        <option value="regional">Regional</option>
+        <option value="national">National</option>
+      </select>
 
       <Separator />
 
       {/* OWNERSHIP */}
-      <SectionLabel text="OWNERSHIP" />
-      <Pill
-        label="PE-Backed"
-        active={filters.ownership === 'pe'}
-        color="var(--pe)"
-        activeBg="var(--pe)"
-        onClick={() =>
-          onFilter({ ownership: filters.ownership === 'pe' ? 'all' : 'pe' })
-        }
-      />
-      <Pill
-        label="Family/Indep."
-        active={filters.ownership === 'independent'}
-        onClick={() =>
-          onFilter({
-            ownership: filters.ownership === 'independent' ? 'all' : 'independent',
-          })
-        }
-      />
+      <span style={labelStyle}>Ownership</span>
+      <select
+        value={filters.ownership}
+        onChange={(e) => onFilter({ ownership: e.target.value as FilterState['ownership'] })}
+        style={filters.ownership !== 'all' ? activeSelectStyle : selectStyle}
+      >
+        <option value="all">All</option>
+        <option value="pe">PE-Backed</option>
+        <option value="independent">Family/Indep.</option>
+      </select>
 
       <Separator />
 
-      {/* SERVICES */}
-      <SectionLabel text="SERVICES" />
-      {services.map((svc) => (
-        <Pill
-          key={svc}
-          label={svc}
-          active={filters.service === svc}
-          onClick={() =>
-            onFilter({ service: filters.service === svc ? null : svc })
+      {/* EMPLOYEES — ordered low to high */}
+      <span style={labelStyle}>Employees</span>
+      <select
+        value={filters.employeeSizeFilter || ''}
+        onChange={(e) => onFilter({ employeeSizeFilter: e.target.value || null })}
+        style={filters.employeeSizeFilter ? activeSelectStyle : selectStyle}
+      >
+        <option value="">All</option>
+        <option value="1-10">1-10</option>
+        <option value="11-50">11-50</option>
+        <option value="51-200">51-200</option>
+        <option value="201-500">201-500</option>
+        <option value="501-1,000">501-1,000</option>
+        <option value="1,001+">1,001+</option>
+      </select>
+
+      <Separator />
+
+      {/* # LOCATIONS — ordered low to high */}
+      <span style={labelStyle}>Locations</span>
+      <select
+        value={filters.locationCountFilter || ''}
+        onChange={(e) => onFilter({ locationCountFilter: e.target.value || null })}
+        style={filters.locationCountFilter ? activeSelectStyle : selectStyle}
+      >
+        <option value="">All</option>
+        <option value="1-2">1-2</option>
+        <option value="3-9">3-9</option>
+        <option value="10-19">10-19</option>
+        <option value="20-49">20-49</option>
+        <option value="50+">50+</option>
+      </select>
+
+      <Separator />
+
+      {/* AVG RATING — ordered low to high */}
+      <span style={labelStyle}>Rating</span>
+      <select
+        value={filters.ratingFilter || (filters.minRating >= 4.8 ? '4.8+' : '')}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val === '4.8+') {
+            onFilter({ ratingFilter: null, minRating: 4.8 });
+          } else if (val) {
+            onFilter({ ratingFilter: val, minRating: 0 });
+          } else {
+            onFilter({ ratingFilter: null, minRating: 0 });
           }
-        />
-      ))}
+        }}
+        style={(filters.ratingFilter || filters.minRating >= 4.8) ? activeSelectStyle : selectStyle}
+      >
+        <option value="">All</option>
+        <option value="< 3.0">&lt; 3.0</option>
+        <option value="3.0-3.49">3.0-3.49</option>
+        <option value="3.5-3.99">3.5-3.99</option>
+        <option value="4.0-4.49">4.0-4.49</option>
+        <option value="4.5-5.0">4.5-5.0</option>
+        <option value="4.8+">&#9733; 4.8+</option>
+      </select>
 
       <Separator />
 
-      {/* QUALITY */}
-      <SectionLabel text="QUALITY" />
-      <Pill
-        label={'\u2605 4.8+'}
-        active={filters.minRating >= 4.8}
-        color="var(--acc)"
-        activeBg="var(--acc)"
-        onClick={() =>
-          onFilter({ minRating: filters.minRating >= 4.8 ? 0 : 4.8 })
-        }
-      />
+      {/* # REVIEWS — ordered low to high */}
+      <span style={labelStyle}>Reviews</span>
+      <select
+        value={filters.reviewsFilter || ''}
+        onChange={(e) => onFilter({ reviewsFilter: e.target.value || null })}
+        style={filters.reviewsFilter ? activeSelectStyle : selectStyle}
+      >
+        <option value="">All</option>
+        <option value="< 50">&lt; 50</option>
+        <option value="50-99">50-99</option>
+        <option value="100-499">100-499</option>
+        <option value="500-999">500-999</option>
+        <option value="1,000+">1,000+</option>
+      </select>
 
       <Separator />
 
-      {/* EMPLOYEES */}
-      <SectionLabel text="EMPLOYEES" />
-      {['1,001+', '501-1,000', '201-500', '51-200', '11-50', '1-10'].map((bucket) => (
-        <Pill
-          key={`emp-${bucket}`}
-          label={bucket}
-          active={filters.employeeSizeFilter === bucket}
-          color="#b07d10"
-          activeBg="#b07d10"
-          onClick={() =>
-            onFilter({ employeeSizeFilter: filters.employeeSizeFilter === bucket ? null : bucket })
-          }
-        />
-      ))}
+      {/* # PHOTOS — ordered low to high */}
+      <span style={labelStyle}>Photos</span>
+      <select
+        value={filters.photosFilter || ''}
+        onChange={(e) => onFilter({ photosFilter: e.target.value || null })}
+        style={filters.photosFilter ? activeSelectStyle : selectStyle}
+      >
+        <option value="">All</option>
+        <option value="< 10">&lt; 10</option>
+        <option value="10-49">10-49</option>
+        <option value="50-99">50-99</option>
+        <option value="100-499">100-499</option>
+        <option value="500+">500+</option>
+      </select>
 
-      <Separator />
+      {/* SERVICES — only show if services exist */}
+      {services.length > 0 && (
+        <>
+          <Separator />
+          <span style={labelStyle}>Service</span>
+          <select
+            value={filters.service || ''}
+            onChange={(e) => onFilter({ service: e.target.value || null })}
+            style={filters.service ? activeSelectStyle : selectStyle}
+          >
+            <option value="">All</option>
+            {services.map((svc) => (
+              <option key={svc} value={svc}>{svc}</option>
+            ))}
+          </select>
+        </>
+      )}
 
-      {/* # OF LOCATIONS */}
-      <SectionLabel text="# LOCATIONS" />
-      {['50+', '20-49', '10-19', '3-9', '1-2'].map((bucket) => (
-        <Pill
-          key={`loc-${bucket}`}
-          label={bucket}
-          active={filters.locationCountFilter === bucket}
-          color="#b07d10"
-          activeBg="#b07d10"
-          onClick={() =>
-            onFilter({ locationCountFilter: filters.locationCountFilter === bucket ? null : bucket })
-          }
-        />
-      ))}
-
-      <Separator />
-
-      {/* AVG RATING */}
-      <SectionLabel text="AVG RATING" />
-      {['4.5-5.0', '4.0-4.49', '3.5-3.99', '3.0-3.49', '< 3.0'].map((bucket) => (
-        <Pill
-          key={`rat-${bucket}`}
-          label={bucket}
-          active={filters.ratingFilter === bucket}
-          color="#b07d10"
-          activeBg="#b07d10"
-          onClick={() =>
-            onFilter({ ratingFilter: filters.ratingFilter === bucket ? null : bucket })
-          }
-        />
-      ))}
-
-      <Separator />
-
-      {/* # OF REVIEWS */}
-      <SectionLabel text="# REVIEWS" />
-      {['1,000+', '500-999', '100-499', '50-99', '< 50'].map((bucket) => (
-        <Pill
-          key={`rev-${bucket}`}
-          label={bucket}
-          active={filters.reviewsFilter === bucket}
-          color="#b07d10"
-          activeBg="#b07d10"
-          onClick={() =>
-            onFilter({ reviewsFilter: filters.reviewsFilter === bucket ? null : bucket })
-          }
-        />
-      ))}
-
-      <Separator />
-
-      {/* # OF PHOTOS */}
-      <SectionLabel text="# PHOTOS" />
-      {['500+', '100-499', '50-99', '10-49', '< 10'].map((bucket) => (
-        <Pill
-          key={`pho-${bucket}`}
-          label={bucket}
-          active={filters.photosFilter === bucket}
-          color="#b07d10"
-          activeBg="#b07d10"
-          onClick={() =>
-            onFilter({ photosFilter: filters.photosFilter === bucket ? null : bucket })
-          }
-        />
-      ))}
-
-      {/* Clear */}
+      {/* Clear button */}
       {hasActiveFilters && (
         <>
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, minWidth: 4 }} />
           <button
             onClick={handleClear}
             style={{
@@ -337,7 +274,6 @@ export default function FilterBar({ filters, onFilter, services }: FilterBarProp
           </button>
         </>
       )}
-    </div>
     </div>
   );
 }
