@@ -4,18 +4,6 @@ export const maxDuration = 30;
 
 // Enrichment types focused on data NOT already in the uploaded files
 const ENRICH_TYPES = {
-  'pe-news': {
-    label: 'PE & Acquisition Intel',
-    pages: ['', '/news', '/press', '/about', '/about-us'],
-    prompt: `You are an M&A research analyst. Extract any information about private equity ownership, acquisitions, mergers, investments, or ownership changes from this webpage. Return ONLY valid JSON:
-- pe_backed: true/false based on any PE/investor mentions
-- pe_firm: name of PE firm if mentioned
-- acquisitions: array of {company, date, details} for any acquisitions mentioned — always include the date if mentioned (e.g., "January 2024")
-- investors: array of investor/firm names mentioned
-- funding: any funding rounds or investment amounts mentioned, include dates (e.g., "Series B $20M (March 2023)")
-- ownership_notes: any other relevant ownership information with dates when changes occurred (1-2 sentences)
-If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes": "No PE or acquisition information found on this page."}`,
-  },
   'recent-news': {
     label: 'Recent News & Growth',
     pages: ['', '/news', '/press', '/blog', '/press-releases'],
@@ -46,6 +34,23 @@ If no PE/acquisition info is found, return {"pe_backed": false, "ownership_notes
 - amenities: array of amenities or features at this location
 - booking_link: URL for booking/scheduling if found`,
   },
+  'location-news': {
+    label: 'Location News',
+    pages: [],
+    prompt: '', // Generated dynamically with date cutoff + location context
+    useWebSearch: true,
+  },
+  'location-pricing': {
+    label: 'Location Pricing & Services',
+    pages: [],
+    prompt: `Extract pricing and service details specific to this business location. Return ONLY valid JSON:
+- services_at_location: array of services available at THIS specific location
+- pricing: array of {service, price, details} for any pricing found
+- membership_options: array of {name, price, benefits} if membership/subscription plans exist at this location
+- specials: any current promotions or special offers at this location — include expiration dates if visible
+- packages: array of {name, price, includes} for any bundled offerings
+- differentiators: what makes this location's services unique (1 sentence)`,
+  },
 } as const;
 
 type EnrichType = keyof typeof ENRICH_TYPES;
@@ -65,6 +70,80 @@ Return ONLY valid JSON:
 - partnerships: string with date if mentioned
 - awards: string with date if mentioned
 - growth_signals: 1-2 sentences summarizing recent growth trajectory based on what you see`;
+}
+
+// Helper: location-specific enrichment types
+const LOCATION_TYPES: EnrichType[] = ['location-news', 'location-pricing', 'location-detail'];
+
+function isLocationType(t: EnrichType): boolean {
+  return LOCATION_TYPES.includes(t);
+}
+
+// Helper: build Firecrawl search query for a given enrichment type
+function buildSearchQuery(
+  enrichType: EnrichType,
+  domain: string,
+  locationName?: string,
+  locationCity?: string,
+  locationState?: string,
+): string {
+  const companyName = domain.replace(/\.(com|net|org|io|co|us|biz)$/i, '').replace(/[.-]/g, ' ');
+  const locationParts = [locationName, locationCity, locationState].filter(Boolean).join(' ');
+
+  switch (enrichType) {
+    case 'recent-news':
+      return `"${companyName}" news recent ${new Date().getFullYear()}`;
+    case 'location-news':
+      return `"${companyName}" ${locationParts} news recent ${new Date().getFullYear()}`;
+    case 'location-pricing':
+      return `"${companyName}" ${locationParts} pricing services membership`;
+    case 'location-detail':
+      return [locationName, locationCity, locationState, domain].filter(Boolean).join(' ');
+    case 'services-pricing':
+      return `"${companyName}" services pricing membership`;
+    default:
+      return companyName;
+  }
+}
+
+// Helper: try Claude web search to find additional content
+async function tryClaudeWebSearch(
+  anthropicKey: string,
+  searchQuery: string,
+  contextDescription: string,
+): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey: anthropicKey });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = await (client.messages.create as any)({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+      messages: [{
+        role: 'user',
+        content: `Search the web for: ${searchQuery}\n\nContext: ${contextDescription}\n\nReturn all relevant information you find as plain text, including dates, sources, and key facts. Be thorough and include as much detail as possible.`,
+      }],
+    });
+
+    const inputTokens = response.usage?.input_tokens ?? 0;
+    const outputTokens = response.usage?.output_tokens ?? 0;
+
+    // Extract text from the response (may have multiple content blocks from tool use)
+    let content = '';
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        content += block.text + '\n';
+      }
+    }
+
+    return { content: content.trim(), inputTokens, outputTokens };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error('Claude web search failed (graceful fallback):', errMsg);
+    return { content: '', inputTokens: 0, outputTokens: 0 };
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -117,25 +196,27 @@ export async function POST(req: NextRequest) {
 
     const config = ENRICH_TYPES[enrichType] || ENRICH_TYPES['services-pricing'];
 
-    // Build the prompt — use dynamic prompt for news
+    // Build the extraction prompt — use dynamic prompt for news types
     let prompt = '';
-    if (enrichType === 'recent-news') {
+    if (enrichType === 'recent-news' || enrichType === 'location-news') {
       prompt = getNewsPrompt();
     } else {
       prompt = config.prompt;
     }
 
-    // Determine which URLs to scrape
-    let pagesToTry: string[];
+    // Track how many Firecrawl search and scrape credits are used
+    let firecrawlSearchCredits = 0;
+    let firecrawlScrapeCredits = 0;
+
+    // ─── STEP A: Firecrawl search/scrape to get content ───
     let markdown = '';
     let scrapedUrl = '';
 
-    if (enrichType === 'location-detail') {
-      // For location-specific enrichment, try to find the specific location page
-      // Strategy: Use Firecrawl search to find the location's page on the company website
-      const locationQuery = [locationName, locationCity, locationState, domain].filter(Boolean).join(' ');
+    if (enrichType === 'location-detail' || enrichType === 'location-news' || enrichType === 'location-pricing') {
+      // Location-specific enrichment: search for the specific location page
+      const locationQuery = buildSearchQuery(enrichType, domain, locationName, locationCity, locationState);
 
-      // Try Firecrawl search first to find the specific location page
+      // Try Firecrawl search first to find the location's page
       let locationPageUrl = '';
       try {
         const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
@@ -149,6 +230,8 @@ export async function POST(req: NextRequest) {
             limit: 5,
           }),
         });
+        firecrawlSearchCredits++;
+
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           const results = searchData?.data || [];
@@ -188,7 +271,7 @@ export async function POST(req: NextRequest) {
         const stateSlug = (locationState || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const nameSlug = (locationName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-        pagesToTry = [
+        const pagesToTry = [
           locationUrl, // Explicit URL if provided
           `https://${domain}/locations/${citySlug}`,
           `https://${domain}/location/${citySlug}`,
@@ -210,6 +293,7 @@ export async function POST(req: NextRequest) {
               },
               body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
             });
+            firecrawlScrapeCredits++;
 
             if (scrapeRes.ok) {
               const data = await scrapeRes.json();
@@ -239,7 +323,7 @@ export async function POST(req: NextRequest) {
       }
     } else if (enrichType === 'recent-news' && 'useWebSearch' in config && config.useWebSearch) {
       // For news, try web search first to get recent results
-      const companyName = domain.replace(/\.(com|net|org|io|co)$/i, '').replace(/[.-]/g, ' ');
+      const searchQuery = buildSearchQuery(enrichType, domain);
       try {
         const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
@@ -248,10 +332,12 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${firecrawlKey}`,
           },
           body: JSON.stringify({
-            query: `"${companyName}" news recent ${new Date().getFullYear()}`,
+            query: searchQuery,
             limit: 5,
           }),
         });
+        firecrawlSearchCredits++;
+
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           const results = searchData?.data || [];
@@ -272,7 +358,7 @@ export async function POST(req: NextRequest) {
 
       // Fall back to scraping company website
       if (!markdown) {
-        pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+        const pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
         for (const targetUrl of pagesToTry) {
           try {
             const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -283,6 +369,8 @@ export async function POST(req: NextRequest) {
               },
               body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
             });
+            firecrawlScrapeCredits++;
+
             if (scrapeRes.ok) {
               const data = await scrapeRes.json();
               const content = data?.data?.markdown || '';
@@ -299,7 +387,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Standard enrichment — scrape company pages
-      pagesToTry = config.pages.map((path) => `https://${domain}${path}`);
+      const pagesToTry = config.pages.map((path: string) => `https://${domain}${path}`);
       for (const targetUrl of pagesToTry) {
         try {
           const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -310,6 +398,7 @@ export async function POST(req: NextRequest) {
             },
             body: JSON.stringify({ url: targetUrl, formats: ['markdown'] }),
           });
+          firecrawlScrapeCredits++;
 
           if (scrapeRes.ok) {
             const data = await scrapeRes.json();
@@ -326,6 +415,53 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ─── STEP B: Claude web search as additional source ───
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    let webSearchContent = '';
+    let sonnetInputTokens = 0;
+    let sonnetOutputTokens = 0;
+
+    if (anthropicKey && anthropicKey !== 'your_key_here') {
+      // Determine if we should try Claude web search (always try, but especially if Firecrawl didn't find enough)
+      const webSearchQuery = buildSearchQuery(enrichType, domain, locationName, locationCity, locationState);
+      let contextDescription = '';
+
+      switch (enrichType) {
+        case 'recent-news':
+          contextDescription = `Looking for recent news about the company at ${domain} from the last 6 months.`;
+          break;
+        case 'location-news':
+          contextDescription = `Looking for recent news about ${locationName || domain} in ${locationCity || 'unknown'}, ${locationState || ''} from the last 6 months.`;
+          break;
+        case 'location-pricing':
+          contextDescription = `Looking for pricing, services, and membership information at ${locationName || domain} in ${locationCity || 'unknown'}, ${locationState || ''}.`;
+          break;
+        case 'location-detail':
+          contextDescription = `Looking for details about the ${locationName || domain} location in ${locationCity || 'unknown'}, ${locationState || ''} including hours, services, staff, and contact info.`;
+          break;
+        case 'services-pricing':
+          contextDescription = `Looking for service offerings, pricing, and membership options at ${domain}.`;
+          break;
+        default:
+          contextDescription = `Looking for business information about ${domain}.`;
+      }
+
+      const webSearchResult = await tryClaudeWebSearch(anthropicKey, webSearchQuery, contextDescription);
+      webSearchContent = webSearchResult.content;
+      sonnetInputTokens = webSearchResult.inputTokens;
+      sonnetOutputTokens = webSearchResult.outputTokens;
+    }
+
+    // Combine Firecrawl content and web search content
+    if (webSearchContent && webSearchContent.length > 100) {
+      if (markdown) {
+        markdown = markdown + '\n\n--- Additional web search results ---\n\n' + webSearchContent;
+      } else {
+        markdown = webSearchContent;
+        scrapedUrl = scrapedUrl || 'claude web search';
+      }
+    }
+
     if (!markdown) {
       return NextResponse.json({
         error: `Could not find readable content on ${domain}. The site may be blocking scrapers.`,
@@ -333,20 +469,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try Claude for structured extraction — track token usage
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    // ─── STEP C: Claude Haiku extraction of structured JSON ───
     let enrichedData: Record<string, unknown> = {};
-    let claudeInputTokens = 0;
-    let claudeOutputTokens = 0;
+    let haikuInputTokens = 0;
+    let haikuOutputTokens = 0;
 
     if (anthropicKey && anthropicKey !== 'your_key_here') {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const client = new Anthropic({ apiKey: anthropicKey });
 
-      // For location enrichment, add location context to the prompt
+      // For location enrichment, add location context to the prompt (type-aware)
       let contextualPrompt = prompt;
-      if (enrichType === 'location-detail' && (locationCity || locationName)) {
-        contextualPrompt += `\n\nIMPORTANT: I am looking for information specifically about the ${locationName || 'location'} in ${locationCity || 'unknown city'}, ${locationState || ''}. Extract pricing, hours, and services for THIS specific location only. If you see pricing tiers or membership options, include ALL of them with their prices.`;
+      if (isLocationType(enrichType) && (locationCity || locationName)) {
+        const locDesc = `${locationName || 'location'} in ${locationCity || 'unknown city'}, ${locationState || ''}`;
+        if (enrichType === 'location-news') {
+          contextualPrompt += `\n\nIMPORTANT: I am looking for recent news specifically about or near the ${locDesc}. Focus on local events, openings, closings, renovations, or community involvement at this specific location.`;
+        } else if (enrichType === 'location-pricing') {
+          contextualPrompt += `\n\nIMPORTANT: I am looking for pricing specifically at the ${locDesc}. Extract ALL pricing tiers, membership options, session prices, and packages for THIS specific location. Include every price you find.`;
+        } else {
+          contextualPrompt += `\n\nIMPORTANT: I am looking for information specifically about the ${locDesc}. Extract hours, services, amenities, and contact info for THIS specific location only.`;
+        }
       }
 
       // Try up to 2 times with a delay for rate limiting
@@ -361,8 +503,8 @@ export async function POST(req: NextRequest) {
             }],
           });
 
-          claudeInputTokens = response.usage?.input_tokens ?? 0;
-          claudeOutputTokens = response.usage?.output_tokens ?? 0;
+          haikuInputTokens = response.usage?.input_tokens ?? 0;
+          haikuOutputTokens = response.usage?.output_tokens ?? 0;
 
           const text = response.content[0].type === 'text' ? response.content[0].text : '';
           const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -407,16 +549,22 @@ export async function POST(req: NextRequest) {
       enrichedData._note = 'Basic extraction only. Add an Anthropic API key for AI-powered enrichment.';
     }
 
-    // Record usage for cost tracking — inline to avoid module import issues
+    // ─── STEP D: Record usage for cost tracking ───
     let costInfo = { estimated: 0, remaining: budgetRemaining, trackingError: '', saved: false };
     if (datasetId) {
       try {
-        // @vercel/blob used via blobHelpers below
-        const firecrawlCreditsUsed = 1;
-        const FIRECRAWL_COST = 0.0053;
-        const CLAUDE_IN_COST = 0.00025 / 1000;
-        const CLAUDE_OUT_COST = 0.00125 / 1000;
-        const cost = firecrawlCreditsUsed * FIRECRAWL_COST + claudeInputTokens * CLAUDE_IN_COST + claudeOutputTokens * CLAUDE_OUT_COST;
+        // Cost constants
+        const FIRECRAWL_SEARCH_COST = 0.0053; // per search
+        const FIRECRAWL_SCRAPE_COST = 0.0053; // per scrape credit
+        const HAIKU_IN_COST = 0.00025 / 1000;  // $0.00025 per 1K input tokens
+        const HAIKU_OUT_COST = 0.00125 / 1000;  // $0.00125 per 1K output tokens
+        const SONNET_IN_COST = 0.003 / 1000;    // $0.003 per 1K input tokens
+        const SONNET_OUT_COST = 0.015 / 1000;   // $0.015 per 1K output tokens
+
+        const firecrawlCost = firecrawlSearchCredits * FIRECRAWL_SEARCH_COST + firecrawlScrapeCredits * FIRECRAWL_SCRAPE_COST;
+        const haikuCost = haikuInputTokens * HAIKU_IN_COST + haikuOutputTokens * HAIKU_OUT_COST;
+        const sonnetCost = sonnetInputTokens * SONNET_IN_COST + sonnetOutputTokens * SONNET_OUT_COST;
+        const cost = firecrawlCost + haikuCost + sonnetCost;
 
         // Load existing usage
         let usage = { totalEstimatedCost: 0, totalCalls: 0, totalFirecrawlCredits: 0, history: [] as unknown[] };
@@ -430,17 +578,22 @@ export async function POST(req: NextRequest) {
           console.error('Usage load failed:', loadErr);
         }
 
+        const totalFirecrawlCredits = firecrawlSearchCredits + firecrawlScrapeCredits;
+
         // Update
         usage.totalEstimatedCost += cost;
         usage.totalCalls += 1;
-        usage.totalFirecrawlCredits += firecrawlCreditsUsed;
+        usage.totalFirecrawlCredits += totalFirecrawlCredits;
         usage.history.push({
           timestamp: new Date().toISOString(),
           enrichType: enrichType || 'unknown',
           domain,
-          firecrawlCredits: firecrawlCreditsUsed,
-          claudeInputTokens,
-          claudeOutputTokens,
+          firecrawlSearchCredits,
+          firecrawlScrapeCredits,
+          haikuInputTokens,
+          haikuOutputTokens,
+          sonnetInputTokens,
+          sonnetOutputTokens,
           estimatedCost: cost,
         });
         if (usage.history.length > 100) usage.history = usage.history.slice(-100);

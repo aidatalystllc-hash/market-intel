@@ -919,10 +919,8 @@ export default function DetailPanel({
           </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               {([
-                { key: 'pe-news', label: '🏦 PE & M&A', desc: 'Investors, acquisitions' },
                 { key: 'recent-news', label: '📰 News', desc: 'Growth, openings, press' },
                 { key: 'services-pricing', label: '💰 Pricing', desc: 'Services & pricing' },
-                { key: 'location-detail', label: '📍 Location', desc: 'Hours, staff, amenities' },
               ] as const).map((opt) => (
                 <button
                   key={opt.key}
@@ -995,10 +993,8 @@ export default function DetailPanel({
         {/* Enriched Data — shown inline after enrichment */}
         {enrichedData && Object.keys(enrichedData).filter(k => !k.startsWith('_')).length > 0 && (
           <Section title={
-            lastEnrichType === 'pe-news' ? '🏦 PE & M&A Intel' :
             lastEnrichType === 'recent-news' ? '📰 Recent News' :
             lastEnrichType === 'services-pricing' ? '💰 Services & Pricing' :
-            lastEnrichType === 'location-detail' ? '📍 Location Details' :
             '🏢 Enriched — Company-Wide'
           }>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

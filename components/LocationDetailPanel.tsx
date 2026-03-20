@@ -7,7 +7,7 @@ import { formatRevenue } from '@/lib/formatters';
 
 // Module-level enrichment cache shared across component instances
 const locationEnrichCache = new Map<string, Record<string, unknown>>();
-const companyEnrichCache = new Map<string, string>();
+const companyEnrichCache = new Map<string, Record<string, unknown>>();
 
 /* ── Helpers ── */
 
@@ -84,6 +84,127 @@ const sectionTitleStyle: React.CSSProperties = {
   color: 'var(--tx3)',
   marginBottom: 8,
 };
+
+/* ── Generic Enriched Data Renderer ── */
+
+function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unknown>; accentColor: string }) {
+  const entries = Object.entries(data).filter(([k, v]) => !k.startsWith('_') && v != null && v !== '' && !(Array.isArray(v) && v.length === 0));
+
+  if (entries.length === 0) {
+    return <div style={{ fontSize: 10, color: 'var(--tx3)', fontStyle: 'italic' }}>No data returned.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: accentColor,
+            marginBottom: 3,
+          }}>
+            {key.replace(/_/g, ' ')}
+          </div>
+          <EnrichedFieldValue value={value} accentColor={accentColor} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EnrichedFieldValue({ value, accentColor }: { value: unknown; accentColor: string }) {
+  // Array of objects (e.g. recent_news, pricing, services, membership_options)
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+
+    // Array of strings — render as tag pills
+    if (typeof value[0] === 'string') {
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          {(value as string[]).slice(0, 12).map((item, i) => (
+            <span key={i} style={{
+              fontSize: 9,
+              padding: '2px 6px',
+              borderRadius: 3,
+              background: `${accentColor}12`,
+              color: accentColor,
+              border: `1px solid ${accentColor}25`,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>{item}</span>
+          ))}
+          {value.length > 12 && (
+            <span style={{ fontSize: 9, color: 'var(--tx3)' }}>+{value.length - 12} more</span>
+          )}
+        </div>
+      );
+    }
+
+    // Array of objects — render each as a mini card
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {(value as Record<string, unknown>[]).slice(0, 8).map((item, i) => (
+          <div key={i} style={{
+            padding: '5px 8px',
+            borderRadius: 5,
+            background: `${accentColor}06`,
+            border: `1px solid ${accentColor}15`,
+            fontSize: 11,
+          }}>
+            {Object.entries(item).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+              <div key={k} style={{ marginBottom: 1 }}>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 8,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--tx3)',
+                  marginRight: 4,
+                }}>{k.replace(/_/g, ' ')}:</span>
+                <span style={{ fontSize: 10, color: 'var(--tx2)' }}>
+                  {typeof v === 'string' ? v.slice(0, 200) : JSON.stringify(v)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+        {(value as unknown[]).length > 8 && (
+          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic' }}>+{(value as unknown[]).length - 8} more items</div>
+        )}
+      </div>
+    );
+  }
+
+  // Plain string / number
+  if (typeof value === 'string' || typeof value === 'number') {
+    return <div style={{ fontSize: 11, color: 'var(--tx2)', lineHeight: 1.4 }}>{String(value)}</div>;
+  }
+
+  // Object (non-array)
+  if (typeof value === 'object' && value !== null) {
+    return (
+      <div style={{ padding: '4px 8px', borderRadius: 4, background: 'var(--bg3)', fontSize: 10 }}>
+        {Object.entries(value as Record<string, unknown>).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+          <div key={k} style={{ marginBottom: 2 }}>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 600, color: 'var(--tx3)', textTransform: 'uppercase', marginRight: 4 }}>{k.replace(/_/g, ' ')}:</span>
+            <span style={{ color: 'var(--tx2)' }}>{typeof v === 'string' ? v : JSON.stringify(v)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Boolean
+  if (typeof value === 'boolean') {
+    return <div style={{ fontSize: 11, color: 'var(--tx2)' }}>{value ? 'Yes' : 'No'}</div>;
+  }
+
+  return null;
+}
 
 /* ── Types ── */
 
@@ -636,7 +757,11 @@ export default function LocationDetailPanel({
           <div style={{ fontSize: 10, color: 'var(--tx3)', marginBottom: 10, lineHeight: 1.4 }}>
             Searches for this specific location&apos;s page to get hours, pricing, services, and amenities for <strong style={{ color: 'var(--tx2)' }}>{location.city ? `${location.name || parentCompany.name} in ${location.city}, ${location.state}` : 'this branch'}</strong>.
           </div>
-          <LocationEnrichButton domain={parentCompany.domain} locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-news" label="📰 News" desc="Local news & events" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
+            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-pricing" label="💰 Pricing" desc="Memberships & pricing" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
+            <LocationEnrichButton domain={parentCompany.domain} enrichType="location-detail" label="🛠 Services" desc="Hours, amenities, staff" locationName={location.name} locationCity={location.city} locationState={location.state} datasetId={datasetId} />
+          </div>
         </div>
 
         {/* ── Company-Wide Enrichment (separate, blue-themed) ── */}
@@ -666,7 +791,6 @@ export default function LocationDetailPanel({
             These enrich data about <strong style={{ color: 'var(--tx2)' }}>{parentCompany.name}</strong> as a whole — all locations, not just this one.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <CompanyEnrichButton domain={parentCompany.domain} enrichType="pe-news" label="🏦 PE & M&A" desc="Investors, deals" datasetId={datasetId} />
             <CompanyEnrichButton domain={parentCompany.domain} enrichType="recent-news" label="📰 News" desc="Growth, openings" datasetId={datasetId} />
             <CompanyEnrichButton domain={parentCompany.domain} enrichType="services-pricing" label="💰 Pricing" desc="Plans & pricing" datasetId={datasetId} />
           </div>
@@ -678,13 +802,13 @@ export default function LocationDetailPanel({
 
 /* ── Enrich Button Components ── */
 
-function LocationEnrichButton({ domain, locationName, locationCity, locationState, datasetId }: { domain: string; locationName: string; locationCity?: string; locationState?: string; datasetId?: string | null }) {
+function LocationEnrichButton({ domain, enrichType, label, desc, locationName, locationCity, locationState, datasetId }: { domain: string; enrichType: string; label: string; desc: string; locationName: string; locationCity?: string; locationState?: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
 
-  const cacheKey = `${domain}:location-detail:${locationName}:${locationCity}:${locationState}`;
+  const cacheKey = `${domain}:${enrichType}:${locationName}:${locationCity}:${locationState}`;
 
   const handleEnrich = async (forceRefresh = false) => {
     if (loading) return;
@@ -707,7 +831,7 @@ function LocationEnrichButton({ domain, locationName, locationCity, locationStat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           domain,
-          enrichType: 'location-detail',
+          enrichType,
           locationName,
           locationCity,
           locationState,
@@ -727,18 +851,18 @@ function LocationEnrichButton({ domain, locationName, locationCity, locationStat
   return (
     <div>
       <button onClick={() => handleEnrich(false)} disabled={loading} style={{
-        width: '100%', padding: '9px 0', border: '1px solid #1a7040', borderRadius: 6,
-        background: loading ? 'var(--bg3)' : 'rgba(26,112,64,0.04)', color: '#1a7040',
-        fontSize: 12, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
-        fontFamily: "'Syne', sans-serif", opacity: loading ? 0.6 : 1,
+        width: '100%', padding: '7px 6px', border: '1px solid rgba(26,112,64,0.3)', borderRadius: 5,
+        background: 'rgba(26,112,64,0.04)', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.5 : 1,
+        textAlign: 'left',
       }}>
-        {loading ? '⟳ Searching...' : `📍 Enrich "${locationName || 'This Location'}"`}
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#1a7040' }}>{loading ? '⟳...' : label}</div>
+        <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
       </button>
-      {error && <div style={{ fontSize: 10, color: 'var(--tx2)', marginTop: 4, textAlign: 'center' }}>{error}</div>}
+      {error && <div style={{ fontSize: 9, color: 'var(--tx2)', marginTop: 2, textAlign: 'center' }}>{error}</div>}
       {result && (
-        <div style={{ marginTop: 8, padding: 10, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 6 }}>
+        <div style={{ marginTop: 6, padding: 8, background: 'rgba(26,112,64,0.03)', border: '1px solid rgba(26,112,64,0.12)', borderRadius: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data Found</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a7040', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>📍 Location Data</span>
             {isCached && (
               <>
                 <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
@@ -746,24 +870,7 @@ function LocationEnrichButton({ domain, locationName, locationCity, locationStat
               </>
             )}
           </div>
-          {!!result.local_phone && <div style={{ fontSize: 11, marginBottom: 3 }}>📞 {String(result.local_phone)}</div>}
-          {!!result.hours && <div style={{ fontSize: 11, marginBottom: 3 }}>🕐 {String(result.hours).slice(0, 150)}</div>}
-          {!!result.local_address && <div style={{ fontSize: 11, marginBottom: 3 }}>📍 {String(result.local_address)}</div>}
-          {!!result.services_at_location && Array.isArray(result.services_at_location) && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-              {(result.services_at_location as string[]).slice(0, 8).map((s, i) => (
-                <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(26,112,64,.08)', color: '#1a7040', border: '1px solid rgba(26,112,64,.15)', fontFamily: "'JetBrains Mono', monospace" }}>{s}</span>
-              ))}
-            </div>
-          )}
-          {!!result.amenities && Array.isArray(result.amenities) && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-              {(result.amenities as string[]).slice(0, 8).map((a, i) => (
-                <span key={i} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--tx2)', border: '1px solid var(--bd)' }}>{a}</span>
-              ))}
-            </div>
-          )}
-          {!!result.booking_link && <div style={{ marginTop: 4 }}><a href={String(result.booking_link)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 500 }}>Book Appointment ↗</a></div>}
+          <EnrichedDataRenderer data={result} accentColor="#1a7040" />
           <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic', marginTop: 4 }}>Enriched {new Date().toLocaleTimeString()}</div>
         </div>
       )}
@@ -773,7 +880,8 @@ function LocationEnrichButton({ domain, locationName, locationCity, locationStat
 
 function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { domain: string; enrichType: string; label: string; desc: string; datasetId?: string | null }) {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
 
   const cacheKey = `${domain}:${enrichType}`;
@@ -786,11 +894,13 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
       if (cached) {
         setResult(cached);
         setIsCached(true);
+        setError('');
         return;
       }
     }
     setLoading(true);
     setResult(null);
+    setError('');
     setIsCached(false);
     try {
       const res = await fetch('/api/enrich', {
@@ -799,14 +909,17 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         body: JSON.stringify({ domain, enrichType, datasetId }),
       });
       const data = await res.json();
-      if (data.error) { setResult(data.error); }
+      if (data.error) { setError(data.error); }
       else if (data.enrichedData) {
         const fields = Object.keys(data.enrichedData).filter((k: string) => !k.startsWith('_') && data.enrichedData[k]);
-        const msg = fields.length > 0 ? `Found: ${fields.join(', ')}` : 'No data found.';
-        setResult(msg);
-        if (fields.length > 0) companyEnrichCache.set(cacheKey, msg);
-      } else { setResult('No data found.'); }
-    } catch { setResult('Failed.'); }
+        if (fields.length > 0) {
+          setResult(data.enrichedData);
+          companyEnrichCache.set(cacheKey, data.enrichedData);
+        } else {
+          setError('No data found.');
+        }
+      } else { setError('No data found.'); }
+    } catch { setError('Failed.'); }
     finally { setLoading(false); }
   };
 
@@ -820,15 +933,20 @@ function CompanyEnrichButton({ domain, enrichType, label, desc, datasetId }: { d
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx)' }}>{loading ? '⟳...' : label}</div>
         <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{desc}</div>
       </button>
+      {error && <div style={{ fontSize: 9, color: 'var(--tx2)', marginTop: 2, textAlign: 'center' }}>{error}</div>}
       {result && (
-        <div style={{ fontSize: 9, color: 'var(--tx3)', marginTop: 2, textAlign: 'center' }}>
-          {result}
-          {isCached && (
-            <>
-              {' '}<span style={{ padding: '0 4px', borderRadius: 2, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontSize: 8 }}>Cached</span>
-              {' '}<button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
-            </>
-          )}
+        <div style={{ marginTop: 6, padding: 8, background: 'rgba(26,79,150,0.03)', border: '1px solid rgba(26,79,150,0.12)', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1a4f96', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>🏢 Company Data</span>
+            {isCached && (
+              <>
+                <span style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(176,125,16,0.1)', color: '#b07d10', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 8 }}>Cached</span>
+                <button onClick={() => handleEnrich(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: ACCENT_COLOR, fontSize: 9, fontWeight: 500 }}>Re-enrich</button>
+              </>
+            )}
+          </div>
+          <EnrichedDataRenderer data={result} accentColor="#1a4f96" />
+          <div style={{ fontSize: 9, color: 'var(--tx3)', fontStyle: 'italic', marginTop: 4 }}>Enriched {new Date().toLocaleTimeString()}</div>
         </div>
       )}
     </div>
