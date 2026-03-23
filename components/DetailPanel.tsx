@@ -1184,14 +1184,23 @@ function EnrichedFields({ data: rawData }: { data: Record<string, unknown> }) {
   // Recent News
   if (data.recent_news && Array.isArray(data.recent_news) && data.recent_news.length > 0) {
     items.push(
-      <div key="news"><EnrichedLabel>Recent News</EnrichedLabel>
-        {(data.recent_news as { headline?: string; date?: string; summary?: string }[]).slice(0, 5).map((n, i) => (
-          <div key={i} style={{ fontSize: 11, marginBottom: 6, paddingLeft: 8, borderLeft: '2px solid var(--acc)' }}>
-            <div style={{ fontWeight: 600, color: 'var(--tx)' }}>{n.headline}</div>
-            {n.date && <div style={{ fontSize: 9, color: 'var(--tx3)' }}>{n.date}</div>}
-            {n.summary && <div style={{ color: 'var(--tx2)', lineHeight: 1.4 }}>{n.summary}</div>}
-          </div>
-        ))}
+      <div key="news"><EnrichedLabel>News</EnrichedLabel>
+        {(data.recent_news as { headline?: string; date?: string; summary?: string; source_url?: string | null; _date_verified?: boolean }[]).slice(0, 5).map((n, i) => {
+          const isUnverified = n._date_verified === false || (n.date && (n.date.includes('unverified') || n.date.includes('not found in source')));
+          return (
+            <div key={i} style={{ fontSize: 11, marginBottom: 8, paddingLeft: 8, borderLeft: `2px solid ${isUnverified ? 'var(--tx3)' : 'var(--acc)'}` }}>
+              <div style={{ fontWeight: 600, color: 'var(--tx)' }}>{n.headline}</div>
+              {n.date && (
+                <div style={{ fontSize: 9, color: isUnverified ? '#c06000' : 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {n.date}
+                  {isUnverified && <span title="This date could not be verified against the source material" style={{ cursor: 'help', fontSize: 8, padding: '0 3px', borderRadius: 2, background: 'rgba(192,96,0,0.1)', color: '#c06000', border: '1px solid rgba(192,96,0,0.2)' }}>?</span>}
+                </div>
+              )}
+              {n.summary && <div style={{ color: 'var(--tx2)', lineHeight: 1.4 }}>{n.summary}</div>}
+              {n.source_url && <a href={n.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: 'var(--acc)', textDecoration: 'none' }}>Source ↗</a>}
+            </div>
+          );
+        })}
       </div>
     );
   }

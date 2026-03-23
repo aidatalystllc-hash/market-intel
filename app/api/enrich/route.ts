@@ -13,26 +13,34 @@ const ENRICH_TYPES = {
   'services-pricing': {
     label: 'Services & Pricing',
     pages: ['/services', '/pricing', '/our-services', '/what-we-do', '/membership', '/memberships', '/specials', ''],
-    prompt: `Extract detailed service offerings and pricing from this business webpage. Return ONLY valid JSON:
-- services: array of service names offered
-- pricing: array of {service, price, details} for any pricing found (memberships, packages, etc.)
-- membership_options: array of {name, price, benefits} if membership/subscription plans exist
-- specials: any current promotions or special offers — include expiration dates if visible (e.g., "20% off through March 2024")
-- differentiators: what makes their services unique (1 sentence)`,
+    prompt: `Extract detailed service offerings and pricing from this business webpage.
+
+CRITICAL: Only extract information that is EXPLICITLY written on the page. Do NOT invent services, prices, or details that are not visible in the source text. If pricing is not listed on the page, set pricing to an empty array — do NOT guess prices. If a field has no data on the page, use null or an empty array.
+
+Return ONLY valid JSON:
+- services: array of service names that are EXPLICITLY listed on the page
+- pricing: array of {service, price, details} for pricing that is EXPLICITLY shown on the page (memberships, packages, etc.). Only include prices you can see in the text.
+- membership_options: array of {name, price, benefits} if membership/subscription plans are EXPLICITLY listed on the page
+- specials: any current promotions or special offers EXPLICITLY shown — include expiration dates ONLY if they are written on the page, otherwise omit the date
+- differentiators: what makes their services unique based ONLY on what the page says (1 sentence), or null if not clear from the page`,
   },
   'location-detail': {
     label: 'This Location',
     pages: [], // URL built dynamically from location info
-    prompt: `Extract location-specific details from this business location page. Return ONLY valid JSON:
-- hours: business hours (formatted nicely)
-- services_at_location: array of services available at THIS specific location
-- local_phone: phone number for this location
-- local_address: full address
-- local_pricing: any location-specific pricing (membership tiers, session prices, packages — include ALL pricing you see)
-- membership_options: array of {name, price, benefits} if membership/subscription plans exist at this location
-- staff: array of {name, role} for any staff members listed
-- amenities: array of amenities or features at this location
-- booking_link: URL for booking/scheduling if found`,
+    prompt: `Extract location-specific details from this business location page.
+
+CRITICAL: Only extract information that is EXPLICITLY written on the page. Do NOT invent hours, services, phone numbers, staff names, or any other details. If a piece of information is not on the page, use null or an empty array — never fabricate data. It is better to return fewer fields with accurate data than to guess.
+
+Return ONLY valid JSON:
+- hours: business hours ONLY if explicitly listed on the page, otherwise null
+- services_at_location: array of services EXPLICITLY listed for THIS location
+- local_phone: phone number ONLY if shown on the page, otherwise null
+- local_address: full address ONLY if shown on the page, otherwise null
+- local_pricing: pricing EXPLICITLY shown for this location (membership tiers, session prices, packages), or empty array if none shown
+- membership_options: array of {name, price, benefits} ONLY if membership plans are explicitly listed, otherwise empty array
+- staff: array of {name, role} ONLY for staff members explicitly named on the page, otherwise empty array
+- amenities: array of amenities ONLY if explicitly listed on the page, otherwise empty array
+- booking_link: URL for booking/scheduling ONLY if a link is visible on the page, otherwise null`,
   },
   'location-news': {
     label: 'Location News',
@@ -43,33 +51,40 @@ const ENRICH_TYPES = {
   'location-pricing': {
     label: 'Location Pricing & Services',
     pages: [],
-    prompt: `Extract pricing and service details specific to this business location. Return ONLY valid JSON:
-- services_at_location: array of services available at THIS specific location
-- pricing: array of {service, price, details} for any pricing found
-- membership_options: array of {name, price, benefits} if membership/subscription plans exist at this location
-- specials: any current promotions or special offers at this location — include expiration dates if visible
-- packages: array of {name, price, includes} for any bundled offerings
-- differentiators: what makes this location's services unique (1 sentence)`,
+    prompt: `Extract pricing and service details specific to this business location.
+
+CRITICAL: Only extract information that is EXPLICITLY written on the page. Do NOT invent prices, services, or promotions. If pricing is not visible on the page, return empty arrays — do NOT guess. If a date appears on a special/promotion, copy it exactly as written. Never fabricate dates.
+
+Return ONLY valid JSON:
+- services_at_location: array of services EXPLICITLY listed for THIS location
+- pricing: array of {service, price, details} ONLY for pricing explicitly shown on the page
+- membership_options: array of {name, price, benefits} ONLY if explicitly listed on the page
+- specials: any promotions EXPLICITLY shown on the page — include expiration dates ONLY if written on the page
+- packages: array of {name, price, includes} ONLY for bundled offerings explicitly listed
+- differentiators: what makes this location unique based ONLY on what the page says (1 sentence), or null if not clear`,
   },
 } as const;
 
 type EnrichType = keyof typeof ENRICH_TYPES;
 
 function getNewsPrompt(): string {
-  const now = new Date();
-  const sixMonthsAgo = new Date(now);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  const cutoffStr = sixMonthsAgo.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const todayStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `You are a business news analyst extracting news from scraped web content.
 
-  return `You are a business news analyst. Today's date is ${todayStr}. Extract ONLY recent news from the last 6 months (since ${cutoffStr}). IMPORTANT: Do NOT include any news older than ${cutoffStr}. If a news item doesn't have a clear date, skip it. If all news is older than ${cutoffStr}, return {"recent_news": [], "growth_signals": "No recent news found in the last 6 months."}.
+CRITICAL RULES — READ CAREFULLY:
+1. You must ONLY extract information that is EXPLICITLY written in the source text below.
+2. For dates: Use ONLY dates that appear VERBATIM in the source text. Copy them exactly as written.
+3. If a news item has NO date visible in the source text, set date to "Date not found in source".
+4. NEVER guess, estimate, infer, or fabricate a date. NEVER use today's date as a substitute.
+5. NEVER change a date you find in the source. If it says "March 2023", report "March 2023" — do NOT update it to a more recent date.
+6. If the source material contains no news at all, return {"recent_news": [], "growth_signals": "No news content found on this page."}.
+7. It is MUCH better to return fewer results with accurate dates than more results with guessed dates.
 
 Return ONLY valid JSON:
-- recent_news: array of {headline, date, summary} for news items from the last 6 months ONLY (max 5). Always include the date. Exclude anything before ${cutoffStr}.
-- new_locations: string with date if mentioned (e.g., "Opened Kansas City location (March 2026)")
-- partnerships: string with date if mentioned
-- awards: string with date if mentioned
-- growth_signals: 1-2 sentences summarizing recent growth trajectory based on what you see`;
+- recent_news: array of {headline, date, summary, source_url} (max 5). The "date" field must be copied EXACTLY from the source text, or set to "Date not found in source" if no date is visible near that article. The "source_url" should be the URL where this news was found if visible in the source, or null if not.
+- new_locations: string describing any new location openings mentioned, with the EXACT date as written in the source, or null if not found
+- partnerships: string describing any partnerships mentioned, with the EXACT date as written in the source, or null if not found
+- awards: string describing any awards mentioned, with the EXACT date as written in the source, or null if not found
+- growth_signals: 1-2 sentences summarizing growth trajectory ONLY based on what is explicitly stated in the source text. Do not speculate.`;
 }
 
 // Helper: location-specific enrichment types
@@ -143,7 +158,13 @@ async function tryClaudeWebSearch(
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
       messages: [{
         role: 'user',
-        content: `Search the web for: ${searchQuery}\n\nContext: ${contextDescription}\n\nReturn all relevant information you find as plain text, including dates, sources, and key facts. Be thorough and include as much detail as possible.`,
+        content: `Search the web for: ${searchQuery}\n\nContext: ${contextDescription}\n\nIMPORTANT INSTRUCTIONS FOR YOUR RESPONSE:
+1. For EVERY piece of information you report, include the SOURCE URL where you found it.
+2. For dates: ONLY report dates that are EXPLICITLY published on the source pages. Copy them exactly as written.
+3. NEVER guess, approximate, or fabricate a date. If an article has no visible publication date, write "Date: not specified on page".
+4. Format each finding as: [Source: URL] Date: [exact date from page or "not specified on page"] — [the information]
+5. Do NOT change dates to make them appear more recent. Report them exactly as they appear.
+6. If you find no relevant results, say so honestly rather than fabricating information.`,
       }],
     });
 
@@ -516,11 +537,11 @@ export async function POST(req: NextRequest) {
       if (isLocationType(enrichType) && (locationCity || locationName)) {
         const locDesc = `${locationName || 'location'} in ${locationCity || 'unknown city'}, ${locationState || ''}`;
         if (enrichType === 'location-news') {
-          contextualPrompt += `\n\nIMPORTANT: I am looking for recent news specifically about or near the ${locDesc}. Focus on local events, openings, closings, renovations, or community involvement at this specific location.`;
+          contextualPrompt += `\n\nIMPORTANT: I am looking for news specifically about or near the ${locDesc}. Focus on local events, openings, closings, renovations, or community involvement at this specific location. Remember: use ONLY dates that appear verbatim in the source text. If no date is shown, set date to "Date not found in source". NEVER fabricate or guess dates.`;
         } else if (enrichType === 'location-pricing') {
-          contextualPrompt += `\n\nIMPORTANT: I am looking for pricing specifically at the ${locDesc}. Extract ALL pricing tiers, membership options, session prices, and packages for THIS specific location. Include every price you find.`;
+          contextualPrompt += `\n\nIMPORTANT: I am looking for pricing specifically at the ${locDesc}. Extract ONLY pricing tiers, membership options, session prices, and packages that are EXPLICITLY listed on the page. Do NOT invent prices.`;
         } else {
-          contextualPrompt += `\n\nIMPORTANT: I am looking for information specifically about the ${locDesc}. Extract hours, services, amenities, and contact info for THIS specific location only.`;
+          contextualPrompt += `\n\nIMPORTANT: I am looking for information specifically about the ${locDesc}. Extract ONLY hours, services, amenities, and contact info that are EXPLICITLY shown on the page for THIS specific location.`;
         }
       }
 
@@ -580,6 +601,103 @@ export async function POST(req: NextRequest) {
       if (emailMatch) enrichedData.email = emailMatch[0];
       if (sentences.length > 0) enrichedData.description = sentences.slice(0, 2).join('. ').trim().slice(0, 250);
       enrichedData._note = 'Basic extraction only. Add an Anthropic API key for AI-powered enrichment.';
+    }
+
+    // ─── STEP C2: Post-processing date validation for news enrichment ───
+    if ((enrichType === 'recent-news' || enrichType === 'location-news') && enrichedData.recent_news && Array.isArray(enrichedData.recent_news)) {
+      const sourceText = markdown.toLowerCase();
+      enrichedData.recent_news = (enrichedData.recent_news as { headline?: string; date?: string; summary?: string; source_url?: string | null }[]).map(item => {
+        if (!item.date || item.date === 'Date not found in source') {
+          return { ...item, date: 'Date not found in source', _date_verified: false };
+        }
+
+        const dateStr = item.date;
+
+        // Check 1: Can we find this date (or key parts of it) in the actual source text?
+        // Look for the year, month, or full date string in the source markdown
+        const dateLower = dateStr.toLowerCase().trim();
+        const yearMatch = dateLower.match(/\b(19|20)\d{2}\b/);
+        const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+        const monthAbbrevs = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+        let monthMatch = monthNames.find(m => dateLower.includes(m));
+        let monthAbbrev: string | null = monthMatch ? monthAbbrevs[monthNames.indexOf(monthMatch)] : null;
+        // If no full month name found, try abbreviated (e.g., "Mar 2025")
+        if (!monthMatch) {
+          const abbrevMatch = monthAbbrevs.find(a => dateLower.includes(a));
+          if (abbrevMatch) {
+            monthAbbrev = abbrevMatch;
+            monthMatch = monthNames[monthAbbrevs.indexOf(abbrevMatch)];
+          }
+        }
+
+        let dateFoundInSource = false;
+
+        // Try to find the exact date string in source
+        if (sourceText.includes(dateLower)) {
+          dateFoundInSource = true;
+        }
+        // Try to find year + month combination near each other in source
+        else if (yearMatch && (monthMatch || monthAbbrev)) {
+          // Look for both the year and month (full or abbreviated) appearing within 30 chars of each other in source
+          const yearStr = yearMatch[0];
+          let searchPos = 0;
+          while (searchPos < sourceText.length) {
+            const yearIdx = sourceText.indexOf(yearStr, searchPos);
+            if (yearIdx === -1) break;
+            const nearby = sourceText.slice(Math.max(0, yearIdx - 30), yearIdx + yearStr.length + 30);
+            if ((monthMatch && nearby.includes(monthMatch)) || (monthAbbrev && nearby.includes(monthAbbrev))) {
+              dateFoundInSource = true;
+              break;
+            }
+            searchPos = yearIdx + 1;
+          }
+        }
+        // Try to find just the year in source (weak signal but better than nothing)
+        else if (yearMatch) {
+          dateFoundInSource = sourceText.includes(yearMatch[0]);
+        }
+
+        // Check 2: Is this date suspiciously in the future?
+        try {
+          const parsedDate = new Date(dateStr);
+          if (!isNaN(parsedDate.getTime())) {
+            const now = new Date();
+            const oneMonthFromNow = new Date(now);
+            oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+            if (parsedDate > oneMonthFromNow) {
+              // Date is more than a month in the future — very suspicious
+              return { ...item, date: `${dateStr} (unverified — date appears to be in the future)`, _date_verified: false };
+            }
+          }
+        } catch {
+          // Date parsing failed, that's fine
+        }
+
+        // If we couldn't find the date in the source at all, flag it
+        if (!dateFoundInSource) {
+          return { ...item, date: `${dateStr} (unverified)`, _date_verified: false };
+        }
+
+        return { ...item, _date_verified: true };
+      });
+    }
+
+    // Also validate date fields on other news-related string fields (new_locations, partnerships, awards)
+    if (enrichType === 'recent-news' || enrichType === 'location-news') {
+      const sourceText = markdown.toLowerCase();
+      for (const field of ['new_locations', 'partnerships', 'awards'] as const) {
+        const val = enrichedData[field];
+        if (val && typeof val === 'string') {
+          // Check if any year mentioned in the field actually appears in the source
+          const yearsInField = String(val).match(/\b(19|20)\d{2}\b/g) || [];
+          for (const year of yearsInField) {
+            if (!sourceText.includes(year)) {
+              enrichedData[field] = `${val} (date unverified)`;
+              break;
+            }
+          }
+        }
+      }
     }
 
     // ─── STEP D: Record usage for cost tracking ───

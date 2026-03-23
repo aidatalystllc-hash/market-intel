@@ -94,6 +94,29 @@ function isGarbageValue(v: unknown): boolean {
     lower.includes('access denied') || lower.includes('cookie') && lower.includes('close modal') && v.length < 200;
 }
 
+function NewsItemRenderer({ items, accentColor }: { items: { headline?: string; date?: string; summary?: string; source_url?: string | null; _date_verified?: boolean }[]; accentColor: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {items.slice(0, 5).map((n, i) => {
+        const isUnverified = n._date_verified === false || (n.date && (n.date.includes('unverified') || n.date.includes('not found in source')));
+        return (
+          <div key={i} style={{ fontSize: 10, marginBottom: 4, paddingLeft: 6, borderLeft: `2px solid ${isUnverified ? 'var(--tx3)' : accentColor}` }}>
+            <div style={{ fontWeight: 600, color: 'var(--tx)', lineHeight: 1.3 }}>{n.headline}</div>
+            {n.date && (
+              <div style={{ fontSize: 8, color: isUnverified ? '#c06000' : 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
+                {n.date}
+                {isUnverified && <span title="This date could not be verified against the source material" style={{ cursor: 'help', fontSize: 7, padding: '0 2px', borderRadius: 2, background: 'rgba(192,96,0,0.1)', color: '#c06000', border: '1px solid rgba(192,96,0,0.2)' }}>?</span>}
+              </div>
+            )}
+            {n.summary && <div style={{ color: 'var(--tx2)', lineHeight: 1.3, fontSize: 9 }}>{n.summary}</div>}
+            {n.source_url && <a href={n.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: accentColor, textDecoration: 'none' }}>Source ↗</a>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unknown>; accentColor: string }) {
   const entries = Object.entries(data).filter(([k, v]) => !k.startsWith('_') && v != null && v !== '' && !(Array.isArray(v) && v.length === 0) && !isGarbageValue(v));
 
@@ -103,22 +126,38 @@ function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unkn
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 250, overflowY: 'auto', overflowX: 'hidden', wordBreak: 'break-word', minWidth: 0 }}>
-      {entries.map(([key, value]) => (
-        <div key={key} style={{ minWidth: 0 }}>
-          <div style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 8,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            color: accentColor,
-            marginBottom: 2,
-          }}>
-            {key.replace(/_/g, ' ')}
+      {entries.map(([key, value]) => {
+        // Special rendering for recent_news arrays with date verification
+        if (key === 'recent_news' && Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null && 'headline' in value[0]) {
+          return (
+            <div key={key} style={{ minWidth: 0 }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 8, fontWeight: 600, textTransform: 'uppercase',
+                letterSpacing: '0.06em', color: accentColor, marginBottom: 2,
+              }}>News</div>
+              <NewsItemRenderer items={value as { headline?: string; date?: string; summary?: string; source_url?: string | null; _date_verified?: boolean }[]} accentColor={accentColor} />
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} style={{ minWidth: 0 }}>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 8,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              color: accentColor,
+              marginBottom: 2,
+            }}>
+              {key.replace(/_/g, ' ')}
+            </div>
+            <EnrichedFieldValue value={value} accentColor={accentColor} />
           </div>
-          <EnrichedFieldValue value={value} accentColor={accentColor} />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
