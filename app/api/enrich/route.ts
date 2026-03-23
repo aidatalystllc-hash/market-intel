@@ -68,23 +68,38 @@ Return ONLY valid JSON:
 type EnrichType = keyof typeof ENRICH_TYPES;
 
 function getNewsPrompt(): string {
-  return `You are a business news analyst extracting news from scraped web content.
+  return `You are a business news analyst. Your job is to extract REAL news from scraped web content with perfect accuracy.
 
-CRITICAL RULES — READ CAREFULLY:
-1. You must ONLY extract information that is EXPLICITLY written in the source text below.
-2. For dates: Use ONLY dates that appear VERBATIM in the source text. Copy them exactly as written.
-3. If a news item has NO date visible in the source text, set date to "Date not found in source".
-4. NEVER guess, estimate, infer, or fabricate a date. NEVER use today's date as a substitute.
-5. NEVER change a date you find in the source. If it says "March 2023", report "March 2023" — do NOT update it to a more recent date.
-6. If the source material contains no news at all, return {"recent_news": [], "growth_signals": "No news content found on this page."}.
-7. It is MUCH better to return fewer results with accurate dates than more results with guessed dates.
+CRITICAL RULES — FOLLOW EXACTLY:
+1. You must ONLY extract information that is EXPLICITLY written in the source text below. Never infer, assume, or extrapolate.
+2. For EVERY news item, you MUST include a "supporting_quote" — copy-paste the EXACT sentence(s) from the source text that support your headline and summary. This quote must appear VERBATIM in the source.
+3. Your headline and summary must accurately reflect what the supporting quote says. Do NOT exaggerate, reframe, or mischaracterize. For example:
+   - If the source says "Now hiring a store manager in Chestnut Hill" → that is a JOB POSTING, not a "new location opening"
+   - If the source says "We are expanding our team" → that is HIRING, not "business expansion" or "growth"
+   - If the source says "Check out our services" → that is a MARKETING page, not "news"
+4. EXCLUDE these content types — they are NOT news:
+   - Job postings / career listings / "we're hiring" pages
+   - Product or service descriptions / marketing copy
+   - Customer reviews or testimonials
+   - FAQ pages, contact pages, about pages
+   - Social media posts without news substance
+5. For dates: Use ONLY dates that appear VERBATIM in the source text. If no date is visible, set date to "Date not found in source". NEVER fabricate dates.
+6. For the "content_type" field: classify what the source material actually is (e.g., "press release", "news article", "blog post", "job posting", "marketing page", "unknown"). Be honest.
+7. If after filtering out non-news content there is nothing left, return {"recent_news": [], "growth_signals": "No actual news content found — source material was marketing copy, job listings, or non-news pages."}.
+8. It is MUCH better to return ZERO results than to return a single inaccurate one.
 
 Return ONLY valid JSON:
-- recent_news: array of {headline, date, summary, source_url} (max 5). The "date" field must be copied EXACTLY from the source text, or set to "Date not found in source" if no date is visible near that article. The "source_url" should be the URL where this news was found if visible in the source, or null if not.
-- new_locations: string describing any new location openings mentioned, with the EXACT date as written in the source, or null if not found
-- partnerships: string describing any partnerships mentioned, with the EXACT date as written in the source, or null if not found
-- awards: string describing any awards mentioned, with the EXACT date as written in the source, or null if not found
-- growth_signals: 1-2 sentences summarizing growth trajectory ONLY based on what is explicitly stated in the source text. Do not speculate.`;
+- recent_news: array of {headline, date, summary, source_url, supporting_quote, content_type} (max 5).
+  - headline: Short factual headline. Must be directly supported by the supporting_quote.
+  - date: Copied EXACTLY from the source text, or "Date not found in source".
+  - summary: 1-2 sentence summary. Must NOT say anything that isn't in the supporting_quote.
+  - source_url: URL where this was found, or null.
+  - supporting_quote: The EXACT sentence(s) from the source that prove this headline is accurate. Copy-paste verbatim. This is mandatory.
+  - content_type: What type of content this came from (e.g., "press release", "news article", "blog post").
+- new_locations: string describing new location openings ONLY if the source EXPLICITLY says a new location opened or is opening (not job postings for a location). Include the exact quote. Or null.
+- partnerships: string describing partnerships ONLY if explicitly stated. Include the exact quote. Or null.
+- awards: string describing awards ONLY if explicitly stated. Include the exact quote. Or null.
+- growth_signals: 1-2 sentences summarizing growth ONLY based on explicit statements in the source. Or "No growth signals found."`;
 }
 
 // Helper: location-specific enrichment types
@@ -92,6 +107,23 @@ const LOCATION_TYPES: EnrichType[] = ['location-news', 'location-pricing', 'loca
 
 function isLocationType(t: EnrichType): boolean {
   return LOCATION_TYPES.includes(t);
+}
+
+// Detect job postings, careers pages, and other non-news content
+function isJobPostingOrNonNews(content: string): boolean {
+  const lower = content.toLowerCase();
+  const firstChunk = lower.slice(0, 1500);
+  const jobIndicators = [
+    'apply now', 'submit your resume', 'job description', 'job posting',
+    'we are hiring', 'we\'re hiring', 'now hiring', 'join our team',
+    'job requirements', 'qualifications:', 'responsibilities:',
+    'full-time', 'part-time', 'hourly rate', 'salary range',
+    'apply for this position', 'employment opportunity', 'career opportunity',
+    'equal opportunity employer', 'submit application', 'cover letter',
+  ];
+  // If 3+ job indicators appear in the first 1500 chars, it's likely a job posting
+  const jobHits = jobIndicators.filter(p => firstChunk.includes(p)).length;
+  return jobHits >= 3;
 }
 
 // Helper: build Firecrawl search query for a given enrichment type
@@ -603,12 +635,65 @@ export async function POST(req: NextRequest) {
       enrichedData._note = 'Basic extraction only. Add an Anthropic API key for AI-powered enrichment.';
     }
 
-    // ─── STEP C2: Post-processing date validation for news enrichment ───
+    // ─── STEP C2: Post-processing validation for news enrichment ───
     if ((enrichType === 'recent-news' || enrichType === 'location-news') && enrichedData.recent_news && Array.isArray(enrichedData.recent_news)) {
       const sourceText = markdown.toLowerCase();
-      enrichedData.recent_news = (enrichedData.recent_news as { headline?: string; date?: string; summary?: string; source_url?: string | null }[]).map(item => {
+
+      // STEP C2a: Filter out items classified as job postings or non-news
+      const NON_NEWS_TYPES = ['job posting', 'job listing', 'careers page', 'career page', 'hiring page', 'marketing page', 'product page', 'faq', 'contact page'];
+      enrichedData.recent_news = (enrichedData.recent_news as { headline?: string; date?: string; summary?: string; source_url?: string | null; supporting_quote?: string; content_type?: string }[])
+        .filter(item => {
+          // Filter by content_type if Claude classified it
+          if (item.content_type && NON_NEWS_TYPES.some(t => item.content_type!.toLowerCase().includes(t))) {
+            return false;
+          }
+          // Filter by headline keywords that suggest job postings
+          const headlineLower = (item.headline || '').toLowerCase();
+          if (headlineLower.includes('hiring') || headlineLower.includes('job opening') || headlineLower.includes('career') || headlineLower.includes('now hiring')) {
+            return false;
+          }
+          return true;
+        });
+
+      // STEP C2b: Verify supporting quotes exist in source + validate dates
+      enrichedData.recent_news = (enrichedData.recent_news as { headline?: string; date?: string; summary?: string; source_url?: string | null; supporting_quote?: string; content_type?: string }[]).map(item => {
+        // Quote verification — the most important check
+        let _quote_verified = false;
+        if (item.supporting_quote && item.supporting_quote.length > 10) {
+          const quoteLower = item.supporting_quote.toLowerCase().trim();
+          // Try exact match first
+          if (sourceText.includes(quoteLower)) {
+            _quote_verified = true;
+          } else {
+            // Try matching a significant substring (at least 40 chars) — quotes sometimes have minor formatting differences
+            const words = quoteLower.split(/\s+/);
+            if (words.length >= 6) {
+              // Check if a 6-word sliding window from the quote appears in source
+              for (let w = 0; w <= words.length - 6; w++) {
+                const chunk = words.slice(w, w + 6).join(' ');
+                if (chunk.length >= 25 && sourceText.includes(chunk)) {
+                  _quote_verified = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // Check if the supporting quote is actually about a job posting (even if Claude didn't classify it)
+        if (item.supporting_quote) {
+          const quoteLower = item.supporting_quote.toLowerCase();
+          const jobWords = ['hiring', 'apply now', 'job description', 'resume', 'we\'re hiring', 'now hiring', 'join our team', 'employment'];
+          const jobWordCount = jobWords.filter(w => quoteLower.includes(w)).length;
+          if (jobWordCount >= 2) {
+            // The quote itself is about a job posting — skip this item entirely
+            return null;
+          }
+        }
+
+        // Date validation (existing logic)
         if (!item.date || item.date === 'Date not found in source') {
-          return { ...item, date: 'Date not found in source', _date_verified: false };
+          return { ...item, date: 'Date not found in source', _date_verified: false, _quote_verified };
         }
 
         const dateStr = item.date;
@@ -666,7 +751,7 @@ export async function POST(req: NextRequest) {
             oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
             if (parsedDate > oneMonthFromNow) {
               // Date is more than a month in the future — very suspicious
-              return { ...item, date: `${dateStr} (unverified — date appears to be in the future)`, _date_verified: false };
+              return { ...item, date: `${dateStr} (unverified — date appears to be in the future)`, _date_verified: false, _quote_verified };
             }
           }
         } catch {
@@ -675,16 +760,30 @@ export async function POST(req: NextRequest) {
 
         // If we couldn't find the date in the source at all, flag it
         if (!dateFoundInSource) {
-          return { ...item, date: `${dateStr} (unverified)`, _date_verified: false };
+          return { ...item, date: `${dateStr} (unverified)`, _date_verified: false, _quote_verified };
         }
 
-        return { ...item, _date_verified: true };
-      });
+        return { ...item, _date_verified: true, _quote_verified };
+      }).filter(Boolean); // Remove nulls from job posting filtering
     }
 
-    // Also validate date fields on other news-related string fields (new_locations, partnerships, awards)
+    // Also validate date fields and content accuracy on other news-related string fields
     if (enrichType === 'recent-news' || enrichType === 'location-news') {
       const sourceText = markdown.toLowerCase();
+
+      // Check if the overall source is primarily a job posting — if so, clear new_locations
+      // (this is exactly the Pure Glow bug: a job posting at Chestnut Hill was misread as "new location opening")
+      if (isJobPostingOrNonNews(markdown)) {
+        if (enrichedData.new_locations) {
+          enrichedData.new_locations = null;
+        }
+        // Also clear any news items that slipped through
+        if (enrichedData.recent_news && Array.isArray(enrichedData.recent_news)) {
+          enrichedData.recent_news = [];
+          enrichedData.growth_signals = 'Source material was primarily job listings or marketing content, not news.';
+        }
+      }
+
       for (const field of ['new_locations', 'partnerships', 'awards'] as const) {
         const val = enrichedData[field];
         if (val && typeof val === 'string') {

@@ -94,21 +94,31 @@ function isGarbageValue(v: unknown): boolean {
     lower.includes('access denied') || lower.includes('cookie') && lower.includes('close modal') && v.length < 200;
 }
 
-function NewsItemRenderer({ items, accentColor }: { items: { headline?: string; date?: string; summary?: string; source_url?: string | null; _date_verified?: boolean }[]; accentColor: string }) {
+function NewsItemRenderer({ items, accentColor }: { items: { headline?: string; date?: string; summary?: string; source_url?: string | null; supporting_quote?: string; content_type?: string; _date_verified?: boolean; _quote_verified?: boolean }[]; accentColor: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {items.slice(0, 5).map((n, i) => {
-        const isUnverified = n._date_verified === false || (n.date && (n.date.includes('unverified') || n.date.includes('not found in source')));
+        const isDateUnverified = n._date_verified === false || (n.date && (n.date.includes('unverified') || n.date.includes('not found in source')));
+        const isQuoteUnverified = n._quote_verified === false;
+        const hasIssue = isDateUnverified || isQuoteUnverified;
         return (
-          <div key={i} style={{ fontSize: 10, marginBottom: 4, paddingLeft: 6, borderLeft: `2px solid ${isUnverified ? 'var(--tx3)' : accentColor}` }}>
-            <div style={{ fontWeight: 600, color: 'var(--tx)', lineHeight: 1.3 }}>{n.headline}</div>
+          <div key={i} style={{ fontSize: 10, marginBottom: 6, paddingLeft: 6, borderLeft: `2px solid ${hasIssue ? 'var(--tx3)' : accentColor}` }}>
+            <div style={{ fontWeight: 600, color: 'var(--tx)', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 3 }}>
+              {n.headline}
+              {isQuoteUnverified && <span title="This claim could not be verified against the source text" style={{ cursor: 'help', fontSize: 6, padding: '0 2px', borderRadius: 2, background: 'rgba(192,40,0,0.08)', color: '#c02800', border: '1px solid rgba(192,40,0,0.2)', flexShrink: 0 }}>unverified</span>}
+            </div>
             {n.date && (
-              <div style={{ fontSize: 8, color: isUnverified ? '#c06000' : 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
+              <div style={{ fontSize: 8, color: isDateUnverified ? '#c06000' : 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
                 {n.date}
-                {isUnverified && <span title="This date could not be verified against the source material" style={{ cursor: 'help', fontSize: 7, padding: '0 2px', borderRadius: 2, background: 'rgba(192,96,0,0.1)', color: '#c06000', border: '1px solid rgba(192,96,0,0.2)' }}>?</span>}
+                {n.content_type && <span style={{ fontSize: 7, color: 'var(--tx3)' }}>· {n.content_type}</span>}
               </div>
             )}
             {n.summary && <div style={{ color: 'var(--tx2)', lineHeight: 1.3, fontSize: 9 }}>{n.summary}</div>}
+            {n.supporting_quote && (
+              <div style={{ fontSize: 8, color: 'var(--tx3)', fontStyle: 'italic', lineHeight: 1.3, marginTop: 2, padding: '2px 5px', background: 'var(--bg3)', borderRadius: 2, borderLeft: '2px solid var(--bd)' }}>
+                &ldquo;{n.supporting_quote.length > 120 ? n.supporting_quote.slice(0, 120) + '...' : n.supporting_quote}&rdquo;
+              </div>
+            )}
             {n.source_url && <a href={n.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: accentColor, textDecoration: 'none' }}>Source ↗</a>}
           </div>
         );
@@ -136,7 +146,7 @@ function EnrichedDataRenderer({ data, accentColor }: { data: Record<string, unkn
                 fontSize: 8, fontWeight: 600, textTransform: 'uppercase',
                 letterSpacing: '0.06em', color: accentColor, marginBottom: 2,
               }}>News</div>
-              <NewsItemRenderer items={value as { headline?: string; date?: string; summary?: string; source_url?: string | null; _date_verified?: boolean }[]} accentColor={accentColor} />
+              <NewsItemRenderer items={value as { headline?: string; date?: string; summary?: string; source_url?: string | null; supporting_quote?: string; content_type?: string; _date_verified?: boolean; _quote_verified?: boolean }[]} accentColor={accentColor} />
             </div>
           );
         }
