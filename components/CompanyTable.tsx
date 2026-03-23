@@ -120,261 +120,268 @@ export default function CompanyTable({
 
   const handleDownloadPDF = useCallback(() => {
     setIsExporting(true);
-    try {
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-      // Style guide colors (matching the app)
-      const GOLD: [number, number, number] = [176, 125, 16];      // #b07d10 — accent
-      const WARM_BG: [number, number, number] = [246, 243, 238];   // #f6f3ee — page background
-      const WARM_BG3: [number, number, number] = [240, 236, 228];  // #f0ece4 — alt row
-      const TX: [number, number, number] = [28, 24, 20];           // #1c1814 — primary text
-      const TX2: [number, number, number] = [107, 98, 88];         // #6b6258 — secondary text
-      const TX3: [number, number, number] = [158, 148, 136];       // #9e9488 — label text
-      const NAT: [number, number, number] = [176, 58, 26];         // #b03a1a — national
-      const REG: [number, number, number] = [26, 79, 150];         // #1a4f96 — regional
-      const LOC: [number, number, number] = [26, 112, 64];         // #1a7040 — local
-      const PE: [number, number, number] = [122, 16, 80];          // #7a1050 — PE
-      const BD: [number, number, number] = [221, 216, 206];        // #ddd8ce — border
+    // Use setTimeout to let React render the "Exporting..." state before blocking
+    setTimeout(() => {
+      try {
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-      // Page background
-      doc.setFillColor(...WARM_BG);
-      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        // Style guide colors (matching the app)
+        const GOLD: [number, number, number] = [176, 125, 16];
+        const WARM_BG: [number, number, number] = [246, 243, 238];
+        const WARM_BG3: [number, number, number] = [240, 236, 228];
+        const TX: [number, number, number] = [28, 24, 20];
+        const TX2: [number, number, number] = [107, 98, 88];
+        const TX3: [number, number, number] = [158, 148, 136];
+        const NAT: [number, number, number] = [176, 58, 26];
+        const REG: [number, number, number] = [26, 79, 150];
+        const LOC: [number, number, number] = [26, 112, 64];
+        const PE_COLOR: [number, number, number] = [122, 16, 80];
+        const BD: [number, number, number] = [221, 216, 206];
 
-      // Header bar — white strip with gold bottom border (matching app header)
-      doc.setFillColor(255, 255, 255);
-      doc.rect(0, 0, pageWidth, 56, 'F');
-      doc.setDrawColor(...GOLD);
-      doc.setLineWidth(1.5);
-      doc.line(0, 56, pageWidth, 56);
+        const isCompanyView = tableViewMode === 'company';
+        const titleText = isCompanyView ? 'Company Roster' : 'Location Roster';
+        const countStr = isCompanyView ? `${companies.length} companies` : `${companies.reduce((n, c) => n + c.locations.length, 0)} locations`;
 
-      // Logo mark (small gold circle)
-      doc.setFillColor(...GOLD);
-      doc.circle(52, 28, 8, 'F');
-      doc.setFontSize(8);
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('M', 49, 31);
+        // Footprint helpers
+        const footprintColor = (fp: string): [number, number, number] => {
+          if (fp === 'national') return NAT;
+          if (fp === 'regional') return REG;
+          return LOC;
+        };
+        const footprintLabel = (fp: string): string => {
+          if (fp === 'local') return 'Single Loc';
+          return fp.charAt(0).toUpperCase() + fp.slice(1);
+        };
 
-      // Title
-      doc.setFontSize(15);
-      doc.setFont('helvetica', 'bolditalic');
-      doc.setTextColor(...TX);
-      doc.text(tableViewMode === 'company' ? 'Company Roster' : 'Location Roster', 68, 26);
+        // Draw header + background on every page (called via willDrawPage, BEFORE table content)
+        const drawPageChrome = (pageNum: number) => {
+          // Warm background for entire page
+          doc.setFillColor(...WARM_BG);
+          doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-      // Subtitle — count + date
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...TX2);
-      const countStr = tableViewMode === 'company' ? `${companies.length} companies` : `${flatLocations.length} locations`;
-      doc.text(`${countStr}  ·  ${dateStr}`, 68, 40);
+          // White header bar with gold bottom border
+          doc.setFillColor(255, 255, 255);
+          doc.rect(0, 0, pageWidth, 52, 'F');
+          doc.setDrawColor(...GOLD);
+          doc.setLineWidth(1.5);
+          doc.line(0, 52, pageWidth, 52);
 
-      // "MarketIntel" branding on the right
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...TX3);
-      doc.text('MarketIntel', pageWidth - 40, 32, { align: 'right' });
+          // Gold logo circle
+          doc.setFillColor(...GOLD);
+          doc.circle(50, 26, 7, 'F');
+          doc.setFontSize(7);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.text('M', 47.5, 28.5);
 
-      // Footprint color helper for cell rendering
-      const footprintColor = (fp: string): [number, number, number] => {
-        if (fp === 'national') return NAT;
-        if (fp === 'regional') return REG;
-        return LOC;
-      };
-      const footprintLabel = (fp: string): string => {
-        if (fp === 'local') return 'Single Loc';
-        return fp.charAt(0).toUpperCase() + fp.slice(1);
-      };
+          // Title
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bolditalic');
+          doc.setTextColor(...TX);
+          doc.text(titleText, 64, 24);
 
-      // Common table styles matching the app
-      const baseStyles = {
-        fontSize: 7.5,
-        cellPadding: { top: 4, right: 5, bottom: 4, left: 5 },
-        overflow: 'linebreak' as const,
-        textColor: TX,
-        lineColor: BD,
-        lineWidth: 0.5,
-      };
+          // Subtitle
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...TX2);
+          doc.text(`${countStr}  ·  ${dateStr}`, 64, 38);
 
-      // Header styles — warm off-white with gold text (matches app's filter bar style)
-      const headerStyles = {
-        fillColor: [255, 255, 255] as [number, number, number],
-        textColor: TX2,
-        fontSize: 7,
-        fontStyle: 'bold' as const,
-        cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
-      };
+          // Right side branding
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...TX3);
+          doc.text(`MarketIntel  ·  Page ${pageNum}`, pageWidth - 36, 30, { align: 'right' });
+        };
 
-      // Footer drawer
-      const drawFooter = (data: { pageNumber: number }) => {
-        const pc = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
-        // Footer background
-        doc.setFillColor(255, 255, 255);
-        doc.rect(0, pageHeight - 30, pageWidth, 30, 'F');
-        doc.setDrawColor(...BD);
-        doc.setLineWidth(0.5);
-        doc.line(40, pageHeight - 30, pageWidth - 40, pageHeight - 30);
-        doc.setFontSize(6.5);
-        doc.setTextColor(...TX3);
-        doc.text('Confidential — Generated by MarketIntel', 40, pageHeight - 16);
-        doc.text(`Page ${data.pageNumber} of ${pc}`, pageWidth - 40, pageHeight - 16, { align: 'right' });
-      };
+        // Draw footer AFTER table content
+        const drawFooter = () => {
+          doc.setDrawColor(...BD);
+          doc.setLineWidth(0.5);
+          doc.line(36, pageHeight - 28, pageWidth - 36, pageHeight - 28);
+          doc.setFontSize(6.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...TX3);
+          doc.text('Confidential — Generated by MarketIntel', 36, pageHeight - 16);
+        };
 
-      // Background fill for each new page
-      const drawPageBg = () => {
-        doc.setFillColor(...WARM_BG);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
-      };
+        // Draw page 1 chrome before autoTable starts
+        drawPageChrome(1);
 
-      if (tableViewMode === 'company') {
-        const head = [['COMPANY', 'LOCATION', 'FOOTPRINT', 'OWNERSHIP', 'LOCS', 'EMPLOYEES', 'AVG RATING', 'REVIEWS', 'PHOTOS', 'SERVICES', 'SCORE', 'M&A']];
-        const body = companies.map(c => [
-          c.name || '—',
-          [c.city, c.state].filter(Boolean).join(', ') || '—',
-          footprintLabel(c.footprint),
-          c.isPE ? 'PE-Backed' : c.isFamily ? 'Family' : 'Independent',
-          String(c.locationCount),
-          c.employeeSize || '—',
-          c.avgRating != null ? c.avgRating.toFixed(1) : '—',
-          c.totalReviews != null ? c.totalReviews.toLocaleString() : '—',
-          c.totalPhotos != null ? c.totalPhotos.toLocaleString() : '—',
-          c.services.slice(0, 5).join(', ') || '—',
-          c.score.toFixed(1),
-          String(c.maScore),
-        ]);
+        // Shared autoTable config
+        const baseStyles = {
+          fontSize: 7,
+          cellPadding: { top: 3, right: 4, bottom: 3, left: 4 },
+          overflow: 'linebreak' as const,
+          textColor: TX,
+          lineColor: BD,
+          lineWidth: 0.5,
+        };
 
-        autoTable(doc, {
-          head,
-          body,
-          startY: 66,
-          styles: baseStyles,
-          headStyles: headerStyles,
-          alternateRowStyles: { fillColor: WARM_BG3 },
-          bodyStyles: { fillColor: [255, 255, 255] },
-          columnStyles: {
-            0: { cellWidth: 100, fontStyle: 'bold' },
-            1: { cellWidth: 68, textColor: TX2 },
-            2: { cellWidth: 48, halign: 'center' },
-            3: { cellWidth: 52, halign: 'center' },
-            4: { cellWidth: 28, halign: 'right' },
-            5: { cellWidth: 48, halign: 'center', textColor: TX2 },
-            6: { cellWidth: 42, halign: 'right' },
-            7: { cellWidth: 40, halign: 'right' },
-            8: { cellWidth: 36, halign: 'right', textColor: TX2 },
-            9: { cellWidth: 115, fontSize: 6.5, textColor: TX2 },
-            10: { cellWidth: 34, halign: 'right' },
-            11: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
-          },
-          margin: { left: 40, right: 40, bottom: 36 },
-          didDrawPage: (data) => {
-            if (data.pageNumber > 1) drawPageBg();
-            drawFooter(data);
-          },
-          // Color-code footprint and ownership cells per row
-          didParseCell: (data) => {
-            if (data.section !== 'body') return;
-            const rowIdx = data.row.index;
-            const company = companies[rowIdx];
-            if (!company) return;
+        const headerStyles = {
+          fillColor: [255, 255, 255] as [number, number, number],
+          textColor: TX2,
+          fontSize: 6.5,
+          fontStyle: 'bold' as const,
+          cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
+        };
 
-            // Footprint column — colored text
-            if (data.column.index === 2) {
-              data.cell.styles.textColor = footprintColor(company.footprint);
-              data.cell.styles.fontStyle = 'bold';
-            }
-            // Ownership column — PE gets burgundy
-            if (data.column.index === 3) {
-              if (company.isPE) {
-                data.cell.styles.textColor = PE;
-                data.cell.styles.fontStyle = 'bold';
-              } else {
-                data.cell.styles.textColor = TX3;
+        if (isCompanyView) {
+          // Shorter header labels to prevent wrapping
+          const head = [['COMPANY', 'LOCATION', 'FTPRINT', 'OWNER', 'LOCS', 'EMPL.', 'RATING', 'REVWS', 'PHOTOS', 'SERVICES', 'SCORE', 'M&A']];
+          const body = companies.map(c => [
+            c.name || '—',
+            [c.city, c.state].filter(Boolean).join(', ') || '—',
+            footprintLabel(c.footprint),
+            c.isPE ? 'PE' : c.isFamily ? 'Family' : 'Indep.',
+            String(c.locationCount),
+            c.employeeSize || '—',
+            c.avgRating != null ? c.avgRating.toFixed(1) : '—',
+            c.totalReviews != null ? c.totalReviews.toLocaleString() : '—',
+            c.totalPhotos != null ? c.totalPhotos.toLocaleString() : '—',
+            c.services.slice(0, 4).join(', ') || '—',
+            c.score.toFixed(1),
+            String(c.maScore),
+          ]);
+
+          autoTable(doc, {
+            head,
+            body,
+            startY: 60,
+            styles: baseStyles,
+            headStyles: headerStyles,
+            alternateRowStyles: { fillColor: WARM_BG3 },
+            bodyStyles: { fillColor: [255, 255, 255] },
+            columnStyles: {
+              0: { cellWidth: 'auto', fontStyle: 'bold', minCellWidth: 80 },
+              1: { cellWidth: 'auto', textColor: TX2, minCellWidth: 60 },
+              2: { cellWidth: 45, halign: 'center' },
+              3: { cellWidth: 38, halign: 'center' },
+              4: { cellWidth: 28, halign: 'right' },
+              5: { cellWidth: 42, halign: 'center', textColor: TX2 },
+              6: { cellWidth: 36, halign: 'right' },
+              7: { cellWidth: 36, halign: 'right' },
+              8: { cellWidth: 36, halign: 'right', textColor: TX2 },
+              9: { cellWidth: 'auto', fontSize: 6, textColor: TX2, minCellWidth: 80 },
+              10: { cellWidth: 32, halign: 'right' },
+              11: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+            },
+            margin: { left: 36, right: 36, bottom: 36, top: 60 },
+            showHead: 'everyPage',
+            willDrawPage: (data) => {
+              // Draw page chrome BEFORE autoTable renders rows (page 2+)
+              if (data.pageNumber > 1) {
+                drawPageChrome(data.pageNumber);
               }
+            },
+            didDrawPage: () => {
+              drawFooter();
+            },
+            didParseCell: (data) => {
+              if (data.section !== 'body') return;
+              const company = companies[data.row.index];
+              if (!company) return;
+
+              if (data.column.index === 2) {
+                data.cell.styles.textColor = footprintColor(company.footprint);
+                data.cell.styles.fontStyle = 'bold';
+              }
+              if (data.column.index === 3) {
+                if (company.isPE) {
+                  data.cell.styles.textColor = PE_COLOR;
+                  data.cell.styles.fontStyle = 'bold';
+                } else {
+                  data.cell.styles.textColor = TX3;
+                }
+              }
+              if (data.column.index === 6 && company.avgRating != null && company.avgRating >= 4.8) {
+                data.cell.styles.textColor = GOLD;
+                data.cell.styles.fontStyle = 'bold';
+              }
+              if (data.column.index === 11 && company.maScore >= 70) {
+                data.cell.styles.textColor = GOLD;
+              }
+            },
+          });
+        } else {
+          // Build ALL locations for the PDF
+          const allLocs: FlatLocation[] = [];
+          for (const c of companies) {
+            for (let i = 0; i < c.locations.length; i++) {
+              allLocs.push({ id: `${c.id}-loc-${i}`, location: c.locations[i], parentCompany: c });
             }
-            // Avg Rating — gold highlight for 4.8+
-            if (data.column.index === 6 && company.avgRating != null && company.avgRating >= 4.8) {
-              data.cell.styles.textColor = GOLD;
-              data.cell.styles.fontStyle = 'bold';
-            }
-            // M&A Score — gold highlight for 70+
-            if (data.column.index === 11 && company.maScore >= 70) {
-              data.cell.styles.textColor = GOLD;
-            }
-          },
-        });
-      } else {
-        // Build all locations for PDF
-        const allLocs: FlatLocation[] = [];
-        for (const c of companies) {
-          for (let i = 0; i < c.locations.length; i++) {
-            allLocs.push({ id: `${c.id}-loc-${i}`, location: c.locations[i], parentCompany: c });
           }
+          allLocs.sort((a, b) => (b.location.rating ?? 0) - (a.location.rating ?? 0));
+
+          const head = [['LOCATION', 'ADDRESS', 'COMPANY', 'RATING', 'REVWS', 'PHOTOS', 'PHONE']];
+          const body = allLocs.map(fl => {
+            const loc = fl.location;
+            return [
+              loc.name || '—',
+              [loc.address, loc.city, loc.state].filter(Boolean).join(', ') || '—',
+              fl.parentCompany.name || '—',
+              loc.rating != null ? loc.rating.toFixed(1) : '—',
+              loc.reviews != null ? loc.reviews.toLocaleString() : '—',
+              loc.photosCount != null ? loc.photosCount.toLocaleString() : '—',
+              loc.phone || '—',
+            ];
+          });
+
+          autoTable(doc, {
+            head,
+            body,
+            startY: 60,
+            styles: baseStyles,
+            headStyles: headerStyles,
+            alternateRowStyles: { fillColor: WARM_BG3 },
+            bodyStyles: { fillColor: [255, 255, 255] },
+            columnStyles: {
+              0: { cellWidth: 'auto', fontStyle: 'bold', minCellWidth: 100 },
+              1: { cellWidth: 'auto', textColor: TX2, minCellWidth: 140 },
+              2: { cellWidth: 'auto', fontStyle: 'bold', minCellWidth: 90 },
+              3: { cellWidth: 40, halign: 'right' },
+              4: { cellWidth: 40, halign: 'right' },
+              5: { cellWidth: 40, halign: 'right', textColor: TX2 },
+              6: { cellWidth: 80, textColor: TX2 },
+            },
+            margin: { left: 36, right: 36, bottom: 36, top: 60 },
+            showHead: 'everyPage',
+            willDrawPage: (data) => {
+              if (data.pageNumber > 1) {
+                drawPageChrome(data.pageNumber);
+              }
+            },
+            didDrawPage: () => {
+              drawFooter();
+            },
+            didParseCell: (data) => {
+              if (data.section !== 'body') return;
+              const fl = allLocs[data.row.index];
+              if (!fl) return;
+              if (data.column.index === 3 && fl.location.rating != null && fl.location.rating >= 4.8) {
+                data.cell.styles.textColor = GOLD;
+                data.cell.styles.fontStyle = 'bold';
+              }
+            },
+          });
         }
-        allLocs.sort((a, b) => (b.location.rating ?? 0) - (a.location.rating ?? 0));
 
-        const head = [['LOCATION NAME', 'ADDRESS', 'PARENT COMPANY', 'RATING', 'REVIEWS', 'PHOTOS', 'PHONE']];
-        const body = allLocs.map(fl => {
-          const loc = fl.location;
-          return [
-            loc.name || '—',
-            [loc.address, loc.city, loc.state].filter(Boolean).join(', ') || '—',
-            fl.parentCompany.name || '—',
-            loc.rating != null ? loc.rating.toFixed(1) : '—',
-            loc.reviews != null ? loc.reviews.toLocaleString() : '—',
-            loc.photosCount != null ? loc.photosCount.toLocaleString() : '—',
-            loc.phone || '—',
-          ];
-        });
-
-        autoTable(doc, {
-          head,
-          body,
-          startY: 66,
-          styles: baseStyles,
-          headStyles: headerStyles,
-          alternateRowStyles: { fillColor: WARM_BG3 },
-          bodyStyles: { fillColor: [255, 255, 255] },
-          columnStyles: {
-            0: { cellWidth: 120, fontStyle: 'bold' },
-            1: { cellWidth: 160, textColor: TX2 },
-            2: { cellWidth: 110, fontStyle: 'bold' },
-            3: { cellWidth: 45, halign: 'right' },
-            4: { cellWidth: 50, halign: 'right' },
-            5: { cellWidth: 45, halign: 'right', textColor: TX2 },
-            6: { cellWidth: 90, textColor: TX2 },
-          },
-          margin: { left: 40, right: 40, bottom: 36 },
-          didDrawPage: (data) => {
-            if (data.pageNumber > 1) drawPageBg();
-            drawFooter(data);
-          },
-          didParseCell: (data) => {
-            if (data.section !== 'body') return;
-            const fl = allLocs[data.row.index];
-            if (!fl) return;
-            // Rating — gold highlight for 4.8+
-            if (data.column.index === 3 && fl.location.rating != null && fl.location.rating >= 4.8) {
-              data.cell.styles.textColor = GOLD;
-              data.cell.styles.fontStyle = 'bold';
-            }
-          },
-        });
+        const filename = isCompanyView
+          ? `company-roster-${now.toISOString().slice(0, 10)}.pdf`
+          : `location-roster-${now.toISOString().slice(0, 10)}.pdf`;
+          doc.save(filename);
+      } catch (err) {
+        console.error('PDF export failed:', err);
+        alert('PDF export failed. Please try again.');
+      } finally {
+        setIsExporting(false);
       }
-
-      const filename = tableViewMode === 'company'
-        ? `company-roster-${now.toISOString().slice(0, 10)}.pdf`
-        : `location-roster-${now.toISOString().slice(0, 10)}.pdf`;
-      doc.save(filename);
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert('PDF export failed. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  }, [companies, flatLocations, tableViewMode]);
+    }, 50);
+  }, [companies, tableViewMode]);
 
   const handleHeaderClick = useCallback(
     (key: string) => {
