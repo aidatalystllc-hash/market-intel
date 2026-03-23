@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { Company, Location } from '@/lib/types';
 import { ACCENT_COLOR } from '@/lib/types';
 import { formatRevenue } from '@/lib/formatters';
@@ -878,6 +878,14 @@ function EnrichmentTabs({ title, subtitle, accentColor, tabs, domain, locationNa
   const [error, setError] = useState('');
   const isLocation = !!locationName;
   const cache = isLocation ? locationEnrichCache : companyEnrichCache;
+
+  // Reset enrichment state when the location or company changes
+  useEffect(() => {
+    setActiveTab(null);
+    setLoading(false);
+    setResults({});
+    setError('');
+  }, [domain, locationName, locationCity, locationState]);
 
   const handleTabClick = async (tabKey: string) => {
     // If already active, toggle closed
